@@ -388,7 +388,7 @@ impl TcpPacketBuilder {
     /// Build the TCP packet, computing the checksum (IPv4 pseudo-header).
     pub fn build(mut self, src: Ipv4Addr, dst: Ipv4Addr) -> Vec<u8> {
         // Pad options to 4-byte boundary with NoOps
-        while self.options.len() % 4 != 0 {
+        while !self.options.len().is_multiple_of(4) {
             self.options.push(OPT_NOOP);
         }
         // Update data_offset
