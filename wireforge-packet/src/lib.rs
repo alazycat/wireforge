@@ -98,10 +98,10 @@ pub fn parse_ipv6_payload<'a>(ip: &Ipv6Packet<'a>) -> Option<Packet<'a>> {
 mod tests {
     use super::*;
     use wireforge_core::ipv4::Ipv4PacketBuilder;
+    use wireforge_core::udp::UdpPacketBuilder;
 
     #[test]
     fn dispatch_ethernet_to_ipv4_to_tcp() {
-        // Build an IPv4 + TCP packet embedded in an Ethernet frame
         let ip_bytes = Ipv4PacketBuilder::new()
             .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
             .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
@@ -109,26 +109,87 @@ mod tests {
             .ttl(64)
             .build();
 
-        // Build Ethernet frame around it
-        let mut frame = vec![
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // dst mac
-            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // src mac
-            0x08, 0x00, // EtherType::Ipv4
-        ];
+        let mut frame = vec![0xFFu8; 12]; // dst + src mac
+        frame.extend_from_slice(&[0x08, 0x00]); // EtherType::Ipv4
         frame.extend_from_slice(&ip_bytes);
 
         let (eth, inner) = parse_ethernet_frame(&frame).unwrap();
-        assert_eq!(eth.dst_mac(), [0xFF; 6]);
         assert_eq!(eth.ethertype(), EtherType::Ipv4);
+        assert!(matches!(inner, Some(Packet::Ipv4(_))));
+    }
 
-        match inner {
-            Some(Packet::Ipv4(ip)) => {
-                let payload = parse_ipv4_payload(&ip);
-                // TCP parse will fail since we didn't include a real TCP header,
-                // so payload() from IPv4 is just whatever's after the IP header
-                assert!(payload.is_none() || matches!(payload, Some(Packet::Tcp(_))));
-            }
-            _ => panic!("expected Ipv4"),
-        }
+    #[test]
+    fn dispatch_ethernet_to_arp() {
+        // Build a valid ARP request (28 bytes minimum)
+        let mut arp_bytes = vec![0x00u8, 0x01]; // hw_type=Ethernet
+        arp_bytes.extend_from_slice(&[0x08, 0x00]); // proto_type=IPv4
+        arp_bytes.push(6);  // hw_addr_len
+        arp_bytes.push(4);  // proto_addr_len
+        arp_bytes.extend_from_slice(&[0x00, 0x01]); // operation=Request
+        arp_bytes.extend_from_slice(&[0x00u8; 20]); // addresses (6+4+6+4)
+
+        let mut frame = vec![0xFFu8; 12];
+        frame.extend_from_slice(&[0x08, 0x06]); // EtherType::Arp
+        frame.extend_from_slice(&arp_bytes);
+
+        let (eth, inner) = parse_ethernet_frame(&frame).unwrap();
+        assert_eq!(eth.ethertype(), EtherType::Arp);
+        assert!(matches!(inner, Some(Packet::Arp(_))));
+    }
+
+    #[test]
+    fn dispatch_ethernet_to_ipv6() {
+        // Build a minimal IPv6 header (40 bytes)
+        let mut frame = vec![0xFFu8; 12];
+        frame.extend_from_slice(&[0x86, 0xDD]); // EtherType::Ipv6
+        let mut ip6 = vec![0x60u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3A, 0x40]; // TC+flow=0, payload=0, next=ICMPv6, hop=64
+        ip6.extend_from_slice(&[0u8; 32]); // src + dst = ::
+        frame.extend_from_slice(&ip6);
+
+        let (eth, inner) = parse_ethernet_frame(&frame).unwrap();
+        assert_eq!(eth.ethertype(), EtherType::Ipv6);
+        assert!(matches!(inner, Some(Packet::Ipv6(_))));
+    }
+
+    #[test]
+    fn dispatch_ipv4_to_udp() {
+        let udp_bytes = UdpPacketBuilder::new()
+            .source_port(12345)
+            .destination_port(53)
+            .payload(&[0x01])
+            .build(std::net::Ipv4Addr::new(10, 0, 0, 1), std::net::Ipv4Addr::new(10, 0, 0, 2));
+
+        let ip_bytes = Ipv4PacketBuilder::new()
+            .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
+            .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
+            .protocol(IpProtocol::Udp)
+            .ttl(64)
+            .payload(&udp_bytes).unwrap()
+            .build();
+
+        let ip = Ipv4Packet::new(&ip_bytes).unwrap();
+        let inner = parse_ipv4_payload(&ip);
+        assert!(matches!(inner, Some(Packet::Udp(_))));
+    }
+
+    #[test]
+    fn dispatch_ipv4_to_icmp() {
+        use wireforge_core::icmp::IcmpPacketBuilder;
+        let icmp_bytes = IcmpPacketBuilder::echo_request()
+            .identifier(1).sequence_number(1)
+            .payload(b"ping")
+            .build();
+
+        let ip_bytes = Ipv4PacketBuilder::new()
+            .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
+            .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
+            .protocol(IpProtocol::Icmp)
+            .ttl(64)
+            .payload(&icmp_bytes).unwrap()
+            .build();
+
+        let ip = Ipv4Packet::new(&ip_bytes).unwrap();
+        let inner = parse_ipv4_payload(&ip);
+        assert!(matches!(inner, Some(Packet::Icmp(_))));
     }
 }

@@ -16,3 +16,24 @@ impl<'a> TlsRecord<'a> {
         &self.buf[5..end]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_valid_record() {
+        let data = &[0x16u8, 0x03, 0x03, 0x00, 0x04, 0x01, 0x02, 0x03, 0x04];
+        let rec = TlsRecord::parse(data).unwrap();
+        assert_eq!(rec.content_type(), 0x16);
+        assert_eq!(rec.version(), 0x0303);
+        assert_eq!(rec.length(), 4);
+        assert_eq!(rec.fragment(), &[0x01, 0x02, 0x03, 0x04]);
+    }
+
+    #[test]
+    fn parse_too_short() {
+        assert!(TlsRecord::parse(&[]).is_none());
+        assert!(TlsRecord::parse(&[0x16, 0x03, 0x03, 0x00]).is_none());
+    }
+}

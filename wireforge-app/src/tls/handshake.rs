@@ -18,3 +18,24 @@ impl<'a> TlsHandshake<'a> {
         &self.buf[4..end]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_client_hello_handshake() {
+        // handshake_type=1 (client_hello), length=3 (u24: 0x000003), body=3 bytes
+        let data = &[0x01u8, 0x00, 0x00, 0x03, 0xAA, 0xBB, 0xCC];
+        let hs = TlsHandshake::parse(data).unwrap();
+        assert_eq!(hs.handshake_type(), 1);
+        assert_eq!(hs.length(), 3);
+        assert_eq!(hs.body(), &[0xAA, 0xBB, 0xCC]);
+    }
+
+    #[test]
+    fn parse_too_short() {
+        assert!(TlsHandshake::parse(&[]).is_none());
+        assert!(TlsHandshake::parse(&[0x01, 0x00, 0x00]).is_none());
+    }
+}

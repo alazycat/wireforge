@@ -27,3 +27,36 @@ impl<'a> Iterator for TlsExtensionsIter<'a> {
         Some(TlsExtension { extension_type: ext_type, data: ext_data })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn iterate_two_extensions() {
+        // ext1: type=0x0000 (SNI), len=2, data=[0xAA,0xBB]
+        // ext2: type=0x002b (supported_versions), len=1, data=[0x04]
+        let data = &[0x00u8, 0x00, 0x00, 0x02, 0xAA, 0xBB,
+                     0x00, 0x2b, 0x00, 0x01, 0x04];
+        let exts: Vec<_> = TlsExtensionsIter::new(data).collect();
+        assert_eq!(exts.len(), 2);
+        assert_eq!(exts[0].extension_type, 0x0000);
+        assert_eq!(exts[0].data, &[0xAA, 0xBB]);
+        assert_eq!(exts[1].extension_type, 0x002b);
+        assert_eq!(exts[1].data, &[0x04]);
+    }
+
+    #[test]
+    fn iterator_empty() {
+        let exts: Vec<_> = TlsExtensionsIter::new(&[]).collect();
+        assert!(exts.is_empty());
+    }
+
+    #[test]
+    fn iterator_truncated() {
+        // len says 5 bytes but only 2 remain
+        let data = &[0x00u8, 0x00, 0x00, 0x05, 0xAA];
+        let exts: Vec<_> = TlsExtensionsIter::new(data).collect();
+        assert!(exts.is_empty());
+    }
+}

@@ -6,6 +6,7 @@ use std::time::Duration;
 use socket2::{Domain, Protocol, Socket, Type};
 use wireforge_core::ether::EthernetPacket;
 
+use crate::common;
 use crate::error::IoError;
 use crate::traits::{L2Reader, L2Writer};
 
@@ -76,29 +77,7 @@ impl L2Receiver {
 
     /// Set receive timeout.
     pub fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError> {
-        let tv = dur.map(|d| libc::timeval {
-            tv_sec: d.as_secs() as libc::time_t,
-            tv_usec: d.subsec_micros() as libc::suseconds_t,
-        });
-        let tv_ref = tv.as_ref();
-        let tv_ptr: *const libc::timeval = match tv_ref {
-            Some(t) => t,
-            None => std::ptr::null(),
-        };
-        let fd = self.sock.as_raw_fd();
-        unsafe {
-            if libc::setsockopt(
-                fd,
-                libc::SOL_SOCKET,
-                libc::SO_RCVTIMEO,
-                tv_ptr as *const libc::c_void,
-                std::mem::size_of::<libc::timeval>() as libc::socklen_t,
-            ) < 0
-            {
-                return Err(IoError::Socket(std::io::Error::last_os_error()));
-            }
-        }
-        Ok(())
+        common::set_socket_timeout(&self.sock, dur)
     }
 }
 

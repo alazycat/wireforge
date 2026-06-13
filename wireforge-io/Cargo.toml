@@ -12,8 +12,7 @@ npcap = []
 
 [dependencies]
 wireforge-core = { path = "../wireforge-core" }
-wireforge-packet = { path = "../wireforge-packet" }
-socket2 = "0.5"
+socket2 = { version = "0.5", features = ["all"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 libc = "0.2"

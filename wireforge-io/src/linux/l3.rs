@@ -8,12 +8,14 @@ use socket2::{Domain, Protocol, Socket, Type};
 use wireforge_core::ipv4::Ipv4Packet;
 use wireforge_core::types::IpProtocol;
 
+use crate::common;
 use crate::error::IoError;
 use crate::traits::{L3Reader, L3Writer};
 
 /// Receiver for raw IPv4 packets via SOCK_RAW socket.
 pub struct L3Receiver {
     sock: Socket,
+    buf: Vec<u8>,
 }
 
 impl L3Receiver {
@@ -21,14 +23,27 @@ impl L3Receiver {
     pub fn new(protocol: IpProtocol) -> Result<Self, IoError> {
         let proto = Protocol::from(u8::from(protocol) as i32);
         let sock = Socket::new(Domain::IPV4, Type::RAW, Some(proto))?;
-        Ok(Self { sock })
+        Ok(Self {
+            sock,
+            buf: vec![0u8; 65536],
+        })
     }
 
     /// Receive a single IPv4 packet and parse it.
     pub fn recv(&mut self) -> Result<Ipv4Packet<'_>, IoError> {
-        let mut buf = [0u8; 65536];
-        let n = self.sock.recv(&mut buf)?;
-        Ipv4Packet::new(&buf[..n]).ok_or(IoError::Parse("invalid IPv4 packet"))
+        let n = unsafe {
+            libc::recv(
+                self.sock.as_raw_fd(),
+                self.buf.as_mut_ptr() as *mut libc::c_void,
+                self.buf.len(),
+                0,
+            )
+        };
+        if n < 0 {
+            return Err(IoError::Socket(std::io::Error::last_os_error()));
+        }
+        let n = n as usize;
+        Ipv4Packet::new(&self.buf[..n]).ok_or(IoError::Parse("invalid IPv4 packet"))
     }
 
     /// Enable or disable IP_HDRINCL (header included in send).
@@ -52,29 +67,7 @@ impl L3Receiver {
 
     /// Set receive timeout.
     pub fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError> {
-        let tv = dur.map(|d| libc::timeval {
-            tv_sec: d.as_secs() as libc::time_t,
-            tv_usec: d.subsec_micros() as libc::suseconds_t,
-        });
-        let tv_ref = tv.as_ref();
-        let tv_ptr: *const libc::timeval = match tv_ref {
-            Some(t) => t,
-            None => std::ptr::null(),
-        };
-        let fd = self.sock.as_raw_fd();
-        unsafe {
-            if libc::setsockopt(
-                fd,
-                libc::SOL_SOCKET,
-                libc::SO_RCVTIMEO,
-                tv_ptr as *const libc::c_void,
-                std::mem::size_of::<libc::timeval>() as libc::socklen_t,
-            ) < 0
-            {
-                return Err(IoError::Socket(std::io::Error::last_os_error()));
-            }
-        }
-        Ok(())
+        common::set_socket_timeout(&self.sock, dur)
     }
 }
 
@@ -86,7 +79,11 @@ pub struct L3Sender {
 impl L3Sender {
     /// Open a SOCK_RAW socket for sending IPv4 packets.
     pub fn new() -> Result<Self, IoError> {
-        let sock = Socket::new(Domain::IPV4, Type::RAW, Some(Protocol::from(libc::IPPROTO_RAW as i32)))?;
+        let sock = Socket::new(
+            Domain::IPV4,
+            Type::RAW,
+            Some(Protocol::from(libc::IPPROTO_RAW)),
+        )?;
         Ok(Self { sock })
     }
 

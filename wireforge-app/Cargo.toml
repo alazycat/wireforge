@@ -8,7 +8,6 @@ description = "Application-layer protocol parsers/builders and pcap file I/O"
 
 [dependencies]
 wireforge-core = { path = "../wireforge-core" }
-wireforge-packet = { path = "../wireforge-packet" }
 
 [dev-dependencies]
 criterion = "0.5"
