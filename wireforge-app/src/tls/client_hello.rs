@@ -97,9 +97,9 @@ impl<'a> TlsClientHello<'a> {
     /// Extract supported_versions from TLS 1.3 extension type 0x002b.
     pub fn supported_versions(&self) -> Option<Vec<u16>> {
         for ext in self.extensions() {
-            if ext.extension_type == 0x002b && ext.data.len() >= 1 {
+            if ext.extension_type == 0x002b && !ext.data.is_empty() {
                 let len = ext.data[0] as usize;
-                if 1 + len <= ext.data.len() {
+                if len < ext.data.len() {
                     let versions: Vec<u16> = ext.data[1..1+len]
                         .chunks_exact(2)
                         .map(|c| u16::from_be_bytes([c[0], c[1]]))

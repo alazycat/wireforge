@@ -183,7 +183,7 @@ impl<'a> MqttPacket<'a> {
                     while p + 3 <= data.len() {
                         let tl = u16::from_be_bytes([data[p], data[p+1]]) as usize;
                         p += 2;
-                        if p + tl + 1 <= data.len() {
+                        if p + tl < data.len() {
                             let tf = str::from_utf8(&data[p..p+tl]).unwrap_or("");
                             topics.push((tf, data[p+tl]));
                             p += tl + 1;
