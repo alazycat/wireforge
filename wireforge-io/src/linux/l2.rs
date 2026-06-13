@@ -12,29 +12,44 @@ use crate::traits::{L2Reader, L2Writer};
 /// Receiver for raw L2 Ethernet frames via AF_PACKET socket.
 pub struct L2Receiver {
     sock: Socket,
+    buf: Vec<u8>,
+    ifname: String,
 }
 
 impl L2Receiver {
     /// Open an AF_PACKET socket and bind to the given interface.
     pub fn new(ifname: &str) -> Result<Self, IoError> {
-        let sock = Socket::new(Domain::PACKET, Type::RAW, Some(Protocol::ETH_P_ALL))?;
-
-        // Bind to interface using SO_BINDTODEVICE
-        let ifname_bytes = ifname.as_bytes();
-        sock.set_socket_option(
-            &socket2::SockRef::from(&sock),
-            socket2::maybe_os_specific!(libc::SO_BINDTODEVICE),
-            ifname_bytes,
+        let sock = Socket::new(
+            Domain::PACKET,
+            Type::RAW,
+            Some(Protocol::from(libc::ETH_P_ALL)),
         )?;
 
-        Ok(Self { sock })
+        // Bind to interface using SO_BINDTODEVICE
+        sock.bind_device(Some(ifname.as_bytes()))?;
+
+        Ok(Self {
+            sock,
+            buf: vec![0u8; 65536],
+            ifname: ifname.to_string(),
+        })
     }
 
     /// Receive a single Ethernet frame and parse it.
     pub fn recv(&mut self) -> Result<EthernetPacket<'_>, IoError> {
-        let mut buf = [0u8; 65536];
-        let n = self.sock.recv(&mut buf)?;
-        EthernetPacket::new(&buf[..n]).ok_or(IoError::Parse("invalid Ethernet frame"))
+        let n = unsafe {
+            libc::recv(
+                self.sock.as_raw_fd(),
+                self.buf.as_mut_ptr() as *mut libc::c_void,
+                self.buf.len(),
+                0,
+            )
+        };
+        if n < 0 {
+            return Err(IoError::Socket(std::io::Error::last_os_error()));
+        }
+        let n = n as usize;
+        EthernetPacket::new(&self.buf[..n]).ok_or(IoError::Parse("invalid Ethernet frame"))
     }
 
     /// Enable or disable promiscuous mode.
@@ -42,16 +57,14 @@ impl L2Receiver {
         let fd = self.sock.as_raw_fd();
         unsafe {
             let mut ifreq: libc::ifreq = std::mem::zeroed();
-            // Set IFF_PROMISC via ioctl
-            let mut flags = {
-                let mut ifr_flags: libc::ifreq = std::mem::zeroed();
-                libc::ioctl(fd, libc::SIOCGIFFLAGS, &mut ifr_flags);
-                ifr_flags.ifr_ifru.ifru_flags
-            };
+            copy_ifname(&mut ifreq, &self.ifname);
+            // Read current flags
+            libc::ioctl(fd, libc::SIOCGIFFLAGS, &mut ifreq);
+            let mut flags = ifreq.ifr_ifru.ifru_flags;
             if on {
-                flags |= (libc::IFF_PROMISC as i16) as i32;
+                flags |= libc::IFF_PROMISC as i16;
             } else {
-                flags &= !((libc::IFF_PROMISC as i16) as i32);
+                flags &= !(libc::IFF_PROMISC as i16);
             }
             ifreq.ifr_ifru.ifru_flags = flags;
             if libc::ioctl(fd, libc::SIOCSIFFLAGS, &ifreq) < 0 {
@@ -98,16 +111,22 @@ pub struct L2Sender {
 impl L2Sender {
     /// Open an AF_PACKET socket for sending on the given interface.
     pub fn new(ifname: &str) -> Result<Self, IoError> {
-        let sock = Socket::new(Domain::PACKET, Type::RAW, Some(Protocol::ETH_P_ALL))?;
+        let sock = Socket::new(
+            Domain::PACKET,
+            Type::RAW,
+            Some(Protocol::from(libc::ETH_P_ALL)),
+        )?;
 
         let fd = sock.as_raw_fd();
         let ifindex = unsafe {
             let mut ifreq: libc::ifreq = std::mem::zeroed();
             let name_bytes = ifname.as_bytes();
             let copy_len = name_bytes.len().min(ifreq.ifr_name.len() - 1);
-            ifreq.ifr_name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
+            // SAFETY: ifr_name is [i8]; we copy raw bytes from the interface name
+            let name_i8 = std::slice::from_raw_parts(name_bytes.as_ptr() as *const i8, copy_len);
+            ifreq.ifr_name[..copy_len].copy_from_slice(name_i8);
             libc::ioctl(fd, libc::SIOCGIFINDEX, &mut ifreq);
-            ifreq.ifr_ifru.ifru_ivalue
+            ifreq.ifr_ifru.ifru_ifindex
         };
 
         let sockaddr = libc::sockaddr_ll {
@@ -125,12 +144,22 @@ impl L2Sender {
 
     /// Send raw L2 bytes on the interface.
     pub fn send(&self, packet: &[u8]) -> Result<usize, IoError> {
-        let addr = unsafe {
-            let ptr: *const libc::sockaddr_ll = &self.sockaddr;
-            std::mem::transmute::<&libc::sockaddr_ll, &libc::sockaddr>(&self.sockaddr)
+        let n = unsafe {
+            // SAFETY: transmute sockaddr_ll to sockaddr — same size, packed correctly
+            let addr: &libc::sockaddr = &*(&self.sockaddr as *const libc::sockaddr_ll as *const libc::sockaddr);
+            libc::sendto(
+                self.sock.as_raw_fd(),
+                packet.as_ptr() as *const libc::c_void,
+                packet.len(),
+                0,
+                addr,
+                std::mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t,
+            )
         };
-        let n = self.sock.send_to(packet, addr)?;
-        Ok(n)
+        if n < 0 {
+            return Err(IoError::Socket(std::io::Error::last_os_error()));
+        }
+        Ok(n as usize)
     }
 }
 
@@ -153,4 +182,14 @@ impl L2Writer for L2Sender {
     fn send(&self, packet: &[u8]) -> Result<usize, IoError> {
         self.send(packet)
     }
+}
+
+/// Copy interface name into an ifreq's ifr_name field.
+#[cfg(target_os = "linux")]
+fn copy_ifname(ifr: &mut libc::ifreq, name: &str) {
+    let bytes = name.as_bytes();
+    let len = bytes.len().min(ifr.ifr_name.len() - 1);
+    // SAFETY: ifr_name is [i8]; the interface name is ASCII, so reinterpret as i8 is safe.
+    let name_i8 = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const i8, len) };
+    ifr.ifr_name[..len].copy_from_slice(name_i8);
 }
