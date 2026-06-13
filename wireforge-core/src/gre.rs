@@ -58,11 +58,10 @@ impl<'a> GrePacket<'a> {
         if self.checksum_present() { off += 4; }
         if self.key_present() { off += 4; }
         if self.sequence_present() { off += 4; }
-        if self.routing_present() {
-            if off + 2 <= self.buf.len() {
+        if self.routing_present()
+            && off + 2 <= self.buf.len() {
                 let routing_len = read_u16be(&self.buf[off..off+2]) as usize;
                 off += routing_len;
-            }
         }
         off
     }
