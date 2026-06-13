@@ -1,5 +1,6 @@
 //! IEEE 802.1Q / 802.1ad VLAN tag parser.
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::types::EtherType;
