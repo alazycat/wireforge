@@ -1,0 +1,10 @@
+[package]
+name = "wireforge-packet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unified packet enum and protocol dispatch logic"
+
+[dependencies]
+wireforge-core = { path = "../wireforge-core" }

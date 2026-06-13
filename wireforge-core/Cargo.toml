@@ -1,0 +1,10 @@
+[package]
+name = "wireforge-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Zero-copy network packet parsers and builders — protocol types, checksums, core utilities"
+
+[dependencies]
+# Zero external dependencies — core + alloc only (no_std compatible)

@@ -1,0 +1,11 @@
+[package]
+name = "wireforge-io"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Linux raw socket I/O — AF_PACKET L2 and raw socket L3收发"
+
+[dependencies]
+wireforge-packet = { path = "../wireforge-packet" }
+socket2 = "0.5"
