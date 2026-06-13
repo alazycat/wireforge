@@ -7,6 +7,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 use wireforge_core::ether::EthernetPacket;
 
 use crate::error::IoError;
+use crate::traits::{L2Reader, L2Writer};
 
 /// Receiver for raw L2 Ethernet frames via AF_PACKET socket.
 pub struct L2Receiver {
@@ -130,5 +131,26 @@ impl L2Sender {
         };
         let n = self.sock.send_to(packet, addr)?;
         Ok(n)
+    }
+}
+
+// Trait implementations
+impl L2Reader for L2Receiver {
+    fn recv(&mut self) -> Result<EthernetPacket<'_>, IoError> {
+        self.recv()
+    }
+
+    fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError> {
+        self.set_timeout(dur)
+    }
+
+    fn set_promiscuous(&mut self, on: bool) -> Result<(), IoError> {
+        self.set_promiscuous(on)
+    }
+}
+
+impl L2Writer for L2Sender {
+    fn send(&self, packet: &[u8]) -> Result<usize, IoError> {
+        self.send(packet)
     }
 }

@@ -9,6 +9,7 @@ use wireforge_core::ipv4::Ipv4Packet;
 use wireforge_core::types::IpProtocol;
 
 use crate::error::IoError;
+use crate::traits::{L3Reader, L3Writer};
 
 /// Receiver for raw IPv4 packets via SOCK_RAW socket.
 pub struct L3Receiver {
@@ -94,5 +95,26 @@ impl L3Sender {
         let addr = socket2::SockAddr::from(std::net::SocketAddr::V4(dst));
         let n = self.sock.send_to(packet, &addr)?;
         Ok(n)
+    }
+}
+
+// Trait implementations
+impl L3Reader for L3Receiver {
+    fn recv(&mut self) -> Result<Ipv4Packet<'_>, IoError> {
+        self.recv()
+    }
+
+    fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError> {
+        self.set_timeout(dur)
+    }
+
+    fn set_header_included(&mut self, on: bool) -> Result<(), IoError> {
+        self.set_header_included(on)
+    }
+}
+
+impl L3Writer for L3Sender {
+    fn send_to(&self, packet: &[u8], dst: SocketAddrV4) -> Result<usize, IoError> {
+        self.send_to(packet, dst)
     }
 }

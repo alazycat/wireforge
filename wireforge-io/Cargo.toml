@@ -4,11 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Linux raw socket I/O — AF_PACKET L2 and raw socket L3收发"
+description = "Cross-platform raw socket I/O — AF_PACKET/BPF/NPcap L2 and raw socket L3"
+
+[features]
+default = []
+npcap = []
 
 [dependencies]
+wireforge-core = { path = "../wireforge-core" }
 wireforge-packet = { path = "../wireforge-packet" }
 socket2 = "0.5"
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 libc = "0.2"

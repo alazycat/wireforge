@@ -17,6 +17,17 @@ pub enum IoError {
     NameTooLong(usize),
     /// DNS name compression pointer loop detected.
     CompressionLoop,
+    /// Specified interface does not exist.
+    InterfaceNotFound(String),
+    /// Permission denied (root or Administrator required).
+    PermissionDenied,
+    /// BPF-specific error (macOS/BSD).
+    Bpf(&'static str),
+    /// NPcap-specific error (Windows).
+    #[cfg(feature = "npcap")]
+    Npcap(String),
+    /// Operation not supported on the current platform.
+    UnsupportedPlatform,
 }
 
 impl core::fmt::Display for IoError {
@@ -34,6 +45,12 @@ impl core::fmt::Display for IoError {
             }
             Self::NameTooLong(len) => write!(f, "DNS name label too long: {len} bytes (max 63)"),
             Self::CompressionLoop => write!(f, "DNS name compression loop detected"),
+            Self::InterfaceNotFound(name) => write!(f, "interface not found: {name}"),
+            Self::PermissionDenied => write!(f, "permission denied (root/Administrator required)"),
+            Self::Bpf(msg) => write!(f, "BPF error: {msg}"),
+            #[cfg(feature = "npcap")]
+            Self::Npcap(msg) => write!(f, "NPcap error: {msg}"),
+            Self::UnsupportedPlatform => write!(f, "operation not supported on this platform"),
         }
     }
 }
