@@ -21,5 +21,6 @@ pub mod vlan;
 pub mod arp;
 pub mod ipv4;
 pub mod ipv6;
+pub mod icmp;
 
 pub use util::BuildError;
