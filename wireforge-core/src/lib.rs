@@ -24,5 +24,7 @@ pub mod ipv6;
 pub mod icmp;
 pub mod tcp;
 pub mod udp;
+pub mod igmp;
+pub mod gre;
 
 pub use util::BuildError;
