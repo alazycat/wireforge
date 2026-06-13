@@ -62,6 +62,10 @@ for packet in reader {
 - **All platforms**: `wireforge-core`, `wireforge-packet`, `wireforge-app`
 - **Linux only**: `wireforge-io` (raw socket send/receive)
 
+## Migrating from libpnet
+
+WireForge is a drop-in replacement for libpnet. See the [Migration Guide](docs/migration-from-libpnet.md) for a detailed API comparison and code examples.
+
 ## License
 
 MIT
