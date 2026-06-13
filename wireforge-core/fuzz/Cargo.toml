@@ -1,0 +1,69 @@
+[package]
+name = "wireforge-core-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.wireforge-core]
+path = ".."
+
+# Prevent this from being compiled with the normal profile
+[[bin]]
+name = "ether"
+path = "fuzz_targets/ether.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "vlan"
+path = "fuzz_targets/vlan.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "arp"
+path = "fuzz_targets/arp.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "ipv4"
+path = "fuzz_targets/ipv4.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "ipv6"
+path = "fuzz_targets/ipv6.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "tcp"
+path = "fuzz_targets/tcp.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "udp"
+path = "fuzz_targets/udp.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "icmp"
+path = "fuzz_targets/icmp.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "icmpv6"
+path = "fuzz_targets/icmpv6.rs"
+test = false
+doc = false

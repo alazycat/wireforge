@@ -8,3 +8,18 @@ description = "Zero-copy network packet parsers and builders — protocol types,
 
 [dependencies]
 # Zero external dependencies — core + alloc only (no_std compatible)
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "parse_bench"
+harness = false
+
+[[bench]]
+name = "build_bench"
+harness = false
+
+[[bench]]
+name = "checksum_bench"
+harness = false
