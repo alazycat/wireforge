@@ -1,4 +1,4 @@
-//! Internal utilities: byte-order helpers, checksum computation, error types.
+//! Byte-order helpers, checksum computation, error types.
 
 // ---------------------------------------------------------------------------
 // Big-endian byte read/write helpers
@@ -6,25 +6,25 @@
 
 /// Read a big-endian u16 from a 2-byte slice. Caller guarantees `buf.len() >= 2`.
 #[inline]
-pub(crate) fn read_u16be(buf: &[u8]) -> u16 {
+pub fn read_u16be(buf: &[u8]) -> u16 {
     u16::from_be_bytes([buf[0], buf[1]])
 }
 
 /// Read a big-endian u32 from a 4-byte slice. Caller guarantees `buf.len() >= 4`.
 #[inline]
-pub(crate) fn read_u32be(buf: &[u8]) -> u32 {
+pub fn read_u32be(buf: &[u8]) -> u32 {
     u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]])
 }
 
 /// Write a big-endian u16 into a 2-byte slice. Caller guarantees `buf.len() >= 2`.
 #[inline]
-pub(crate) fn write_u16be(buf: &mut [u8], val: u16) {
+pub fn write_u16be(buf: &mut [u8], val: u16) {
     buf[..2].copy_from_slice(&val.to_be_bytes());
 }
 
 /// Write a big-endian u32 into a 4-byte slice. Caller guarantees `buf.len() >= 4`.
 #[inline]
-pub(crate) fn write_u32be(buf: &mut [u8], val: u32) {
+pub fn write_u32be(buf: &mut [u8], val: u32) {
     buf[..4].copy_from_slice(&val.to_be_bytes());
 }
 

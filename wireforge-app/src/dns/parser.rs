@@ -4,16 +4,7 @@ use core::net::{Ipv4Addr, Ipv6Addr};
 
 use super::name::parse_name;
 use super::types::{DnsClass, DnsOpcode, DnsRcode, DnsType};
-
-#[inline]
-fn read_u16be(buf: &[u8]) -> u16 {
-    u16::from_be_bytes([buf[0], buf[1]])
-}
-
-#[inline]
-fn read_u32be(buf: &[u8]) -> u32 {
-    u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]])
-}
+use wireforge_core::util::{read_u16be, read_u32be};
 
 /// Minimum DNS message length (12-byte header).
 pub const DNS_HEADER_LEN: usize = 12;

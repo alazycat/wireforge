@@ -3,14 +3,10 @@
 use core::net::Ipv4Addr;
 
 use super::types::{DhcpMessageType, DhcpOption};
+use wireforge_core::util::{read_u16be, read_u32be};
 
 const DHCP_MAGIC_COOKIE: u32 = 0x63825363;
 pub const DHCP_MIN_LEN: usize = 240;
-
-#[inline]
-fn read_u16be(buf: &[u8]) -> u16 { u16::from_be_bytes([buf[0], buf[1]]) }
-#[inline]
-fn read_u32be(buf: &[u8]) -> u32 { u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) }
 
 /// Zero-copy DHCP packet parser.
 #[derive(Debug, Clone)]

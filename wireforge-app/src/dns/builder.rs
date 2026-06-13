@@ -3,11 +3,7 @@
 use super::name::encode_name;
 use super::parser::DNS_HEADER_LEN;
 use super::types::{DnsClass, DnsRcode, DnsType};
-
-#[inline]
-fn write_u16be(buf: &mut [u8], val: u16) {
-    buf[..2].copy_from_slice(&val.to_be_bytes());
-}
+use wireforge_core::util::write_u16be;
 
 /// Builder for DNS messages.
 pub struct DnsPacketBuilder {

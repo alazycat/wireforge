@@ -1,9 +1,6 @@
 //! DNS QNAME compression parser (RFC 1035 Section 4.1.4).
 
-#[inline]
-fn read_u16be(buf: &[u8]) -> u16 {
-    u16::from_be_bytes([buf[0], buf[1]])
-}
+use wireforge_core::util::read_u16be;
 
 /// Maximum compression pointer jumps before we stop (prevents loops).
 const MAX_JUMPS: u8 = 10;

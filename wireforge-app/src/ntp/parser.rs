@@ -3,14 +3,12 @@
 use core::time::Duration;
 
 use super::types::{NtpLeapIndicator, NtpMode};
+use wireforge_core::util::read_u32be;
 
 pub const NTP_PACKET_LEN: usize = 48;
 
 /// Seconds between NTP epoch (1900-01-01) and Unix epoch (1970-01-01).
 const NTP_EPOCH_DELTA: u32 = 2_208_988_800;
-
-#[inline]
-fn read_u32be(buf: &[u8]) -> u32 { u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) }
 
 /// Zero-copy NTP packet parser.
 #[derive(Debug, Clone)]
