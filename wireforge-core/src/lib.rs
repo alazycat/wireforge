@@ -14,14 +14,7 @@
 
 extern crate alloc;
 
-// Modules will be added as implemented:
-// pub mod types;
-// pub mod util;
-// pub mod ether;
-// pub mod vlan;
-// pub mod arp;
-// pub mod ipv4;
-// pub mod ipv6;
-// pub mod icmp;
-// pub mod tcp;
-// pub mod udp;
+pub mod types;
+pub mod util;
+
+pub use util::BuildError;
