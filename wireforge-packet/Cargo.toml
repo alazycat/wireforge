@@ -4,7 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "../README.md"
 description = "Unified packet enum and protocol dispatch logic"
 
 [dependencies]
-wireforge-core = { version = "1.0.1", path = "../wireforge-core" }
+wireforge-core = { version = "1.0.2", path = "../wireforge-core" }

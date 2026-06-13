@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "../README.md"
 description = "Zero-copy network packet parsers and builders — protocol types, checksums, core utilities"
 
 [dependencies]
