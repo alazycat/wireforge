@@ -16,5 +16,7 @@ extern crate alloc;
 
 pub mod types;
 pub mod util;
+pub mod ether;
+pub mod vlan;
 
 pub use util::BuildError;
