@@ -1,70 +1,74 @@
 # WireForge
 
-A pure Rust network packet processing library — zero-copy parsers, builder-based constructors, Linux raw socket I/O, and application-layer protocol support.
+A pure Rust network packet processing library — a complete replacement for libpnet.
 
-## Features
-
-- **Zero-copy parsing** — all parsers borrow from the input buffer, no heap allocation on the hot path
-- **Builder API** — ergonomic construction with automatic checksum computation
-- **L2–L4 protocols** — Ethernet, 802.1Q VLAN, ARP, IPv4, IPv6 (with extension headers), TCP (with options), UDP, ICMP/ICMPv6/NDP
-- **Application-layer protocols** — DNS, DHCP, NTP, HTTP/1.1 (in `wireforge-app`)
-- **pcap/pcapng I/O** — read and write packet capture files, pure Rust, no libpcap dependency
-- **no_std core** — `wireforge-core` works without the standard library (requires `alloc`)
-- **Raw socket I/O** — AF_PACKET L2 and SOCK_RAW L3 on Linux (`wireforge-io`)
-- **Fuzz + benchmarks** — cargo-fuzz targets and criterion benchmarks for all protocols
+[![CI](https://github.com/wireforge/wireforge/actions/workflows/ci.yml/badge.svg)](https://github.com/wireforge/wireforge/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![MSRV](https://img.shields.io/badge/rustc-1.75+-orange)
 
 ## Architecture
 
 ```
-wireforge-io        (Linux raw socket I/O)
-     └── wireforge-packet  (Packet enum, protocol dispatch)
-          └── wireforge-core   (Zerocopy parsers, builders, types, checksums)
+wireforge-io        (Cross-platform raw socket I/O)
+    └── wireforge-packet  (Packet enum, protocol dispatch)
+        └── wireforge-core   (Zerocopy parsers, builders, types, checksums)
 
 wireforge-app       (DNS, DHCP, NTP, HTTP, pcap I/O)
-     └── wireforge-packet
+    └── wireforge-packet
 ```
 
 ## Quick Start
 
-```rust
-use wireforge_core::ether::EthernetPacket;
-
-let frame: &[u8] = &[/* raw bytes */];
-if let Some(eth) = EthernetPacket::new(frame) {
-    println!("EtherType: {:?}", eth.ethertype());
-}
+```bash
+cargo add wireforge-core wireforge-packet wireforge-io wireforge-app
 ```
 
 ```rust
-// DNS query construction
+// Parse an Ethernet frame
+use wireforge_core::ether::EthernetPacket;
+let eth = EthernetPacket::new(&frame_bytes).unwrap();
+println!("EtherType: {:?}", eth.ethertype());
+
+// Build a DNS query
 use wireforge_app::dns::builder::DnsPacketBuilder;
 use wireforge_app::dns::types::{DnsType, DnsClass};
-
 let query = DnsPacketBuilder::query()
     .add_question("example.com", DnsType::A, DnsClass::IN)
     .build();
+
+// Capture packets (cross-platform)
+use wireforge_io::{DefaultL2Reader, traits::L2Reader};
+let mut rx = DefaultL2Reader::new("eth0")?;
+let eth = rx.recv()?;
 ```
 
-```rust
-// Read a pcap file
-use wireforge_app::pcap::PcapReader;
-use std::fs::File;
+## Protocol Coverage
 
-let reader = PcapReader::new(File::open("capture.pcap")?)?;
-for packet in reader {
-    let (ts, data) = packet?;
-    println!("Packet at {:?}: {} bytes", ts, data.len());
-}
-```
+| Layer | Protocols | Crate |
+|-------|-----------|-------|
+| L2 | Ethernet II, 802.1Q VLAN, ARP | wireforge-core |
+| L3 | IPv4, IPv6 (+ ext headers), ICMP/ICMPv6/NDP, IGMP, GRE | wireforge-core |
+| L4 | TCP (+ options), UDP | wireforge-core |
+| App | DNS, DHCP, NTP, HTTP/1.1 | wireforge-app |
+| I/O | pcap/pcapng read/write | wireforge-app |
 
 ## Platform Support
 
-- **All platforms**: `wireforge-core`, `wireforge-packet`, `wireforge-app`
-- **Linux only**: `wireforge-io` (raw socket send/receive)
+| Platform | L2 Capture | L3 Capture | Backend |
+|----------|------------|------------|---------|
+| Linux | AF_PACKET | raw socket | socket2 + libc |
+| macOS | BPF | raw socket | /dev/bpf + libc |
+| Windows | NPcap | raw socket | wpcap.dll FFI + WinSock |
 
 ## Migrating from libpnet
 
-WireForge is a drop-in replacement for libpnet. See the [Migration Guide](docs/migration-from-libpnet.md) for a detailed API comparison and code examples.
+WireForge is a drop-in replacement for libpnet. See the **[Migration Guide](docs/migration-from-libpnet.md)** for detailed API comparison and code examples.
+
+## Community
+
+- [Contributing Guide](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 
