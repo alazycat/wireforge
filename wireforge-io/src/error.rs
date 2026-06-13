@@ -24,7 +24,6 @@ pub enum IoError {
     /// BPF-specific error (macOS/BSD).
     Bpf(&'static str),
     /// NPcap-specific error (Windows).
-    #[cfg(feature = "npcap")]
     Npcap(String),
     /// Operation not supported on the current platform.
     UnsupportedPlatform,
@@ -48,7 +47,6 @@ impl core::fmt::Display for IoError {
             Self::InterfaceNotFound(name) => write!(f, "interface not found: {name}"),
             Self::PermissionDenied => write!(f, "permission denied (root/Administrator required)"),
             Self::Bpf(msg) => write!(f, "BPF error: {msg}"),
-            #[cfg(feature = "npcap")]
             Self::Npcap(msg) => write!(f, "NPcap error: {msg}"),
             Self::UnsupportedPlatform => write!(f, "operation not supported on this platform"),
         }
