@@ -44,7 +44,13 @@ pub use interface::{list_interfaces, Interface};
 #[cfg(target_os = "linux")]
 pub use linux::{L2Receiver, L2Sender, L3Receiver, L3Sender};
 
-// Platform-adaptive type aliases
+// Platform-adaptive type aliases — use these in cross-platform code.
+// Each alias resolves to the appropriate platform implementation at compile time.
+
+/// The default L2 frame reader for the current platform.
+/// - Linux: [`linux::L2Receiver`] (AF_PACKET)
+/// - macOS: [`macos::BpfReader`] (BPF)
+/// - Windows: [`windows::NpcapReader`] (NPcap)
 #[cfg(target_os = "linux")]
 pub type DefaultL2Reader = linux::L2Receiver;
 #[cfg(target_os = "macos")]
@@ -52,6 +58,7 @@ pub type DefaultL2Reader = macos::BpfReader;
 #[cfg(target_os = "windows")]
 pub type DefaultL2Reader = windows::NpcapReader;
 
+/// The default L2 frame sender for the current platform.
 #[cfg(target_os = "linux")]
 pub type DefaultL2Writer = linux::L2Sender;
 #[cfg(target_os = "macos")]
@@ -59,6 +66,10 @@ pub type DefaultL2Writer = macos::BpfWriter;
 #[cfg(target_os = "windows")]
 pub type DefaultL2Writer = windows::NpcapWriter;
 
+/// The default L3 IPv4 packet reader for the current platform.
+/// - Linux: [`linux::L3Receiver`] (raw socket)
+/// - macOS: [`macos::BsdL3Receiver`] (raw socket)
+/// - Windows: [`windows::WinL3Receiver`] (raw socket)
 #[cfg(target_os = "linux")]
 pub type DefaultL3Reader = linux::L3Receiver;
 #[cfg(target_os = "macos")]
@@ -66,6 +77,7 @@ pub type DefaultL3Reader = macos::BsdL3Receiver;
 #[cfg(target_os = "windows")]
 pub type DefaultL3Reader = windows::WinL3Receiver;
 
+/// The default L3 IPv4 packet sender for the current platform.
 #[cfg(target_os = "linux")]
 pub type DefaultL3Writer = linux::L3Sender;
 #[cfg(target_os = "macos")]
