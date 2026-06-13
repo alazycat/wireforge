@@ -18,6 +18,10 @@ pub struct DnsPacketBuilder {
     additionals: Vec<Vec<u8>>,
 }
 
+impl Default for DnsPacketBuilder {
+    fn default() -> Self { Self::new() }
+}
+
 impl DnsPacketBuilder {
     pub fn new() -> Self {
         Self {
