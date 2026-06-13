@@ -2,7 +2,7 @@ use super::types::Smb2Command;
 pub const SMB2_HEADER_LEN: usize = 64;
 pub struct Smb2Header<'a> { buf: &'a [u8] }
 impl<'a> Smb2Header<'a> {
-    pub fn parse(buf:&'a[u8])->Option<Self>{ if buf.len()<SMB2_HEADER_LEN{return None;}else if &buf[4..8]!=b"\xfeSMB"{return None;}else{Some(Self{buf})} }
+    pub fn parse(buf:&'a[u8])->Option<Self>{ if buf.len()<SMB2_HEADER_LEN{None}else if &buf[4..8]!=b"\xfeSMB"{None}else{Some(Self{buf})} }
     pub fn command(&self)->Smb2Command { Smb2Command::from(u16::from_le_bytes([self.buf[12],self.buf[13]])) }
     pub fn status(&self)->u32 { u32::from_le_bytes([self.buf[8],self.buf[9],self.buf[10],self.buf[11]]) }
     pub fn credits(&self)->u16 { u16::from_le_bytes([self.buf[14],self.buf[15]]) }
