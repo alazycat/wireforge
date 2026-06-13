@@ -45,7 +45,7 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
     let buf_size = 4096usize;
     let mut buf = vec![0u8; buf_size];
     ifc.ifc_len = buf_size as i32;
-    ifc.ifc_buf = buf.as_mut_ptr() as *mut libc::c_char;
+    ifc.ifc_ifcu.ifcu_buf = buf.as_mut_ptr() as *mut libc::c_char;
 
     if unsafe { libc::ioctl(fd, libc::SIOCGIFCONF, &mut ifc) } < 0 {
         return Err(IoError::Socket(std::io::Error::last_os_error()));
@@ -54,22 +54,22 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
     let mut interfaces = Vec::new();
     let mut pos = 0usize;
     while pos < ifc.ifc_len as usize {
-        let ifr: &libc::ifreq = unsafe { &*(ifc.ifc_buf.add(pos) as *const libc::ifreq) };
+        let ifr: &libc::ifreq = unsafe { &*(ifc.ifc_ifcu.ifcu_buf.add(pos) as *const libc::ifreq) };
         pos += std::mem::size_of::<libc::ifreq>();
         let name = cstr_to_string(&ifr.ifr_name);
 
         let mut ifr_flags = unsafe { std::mem::zeroed::<libc::ifreq>() };
         copy_ifname(&mut ifr_flags, &name);
         let is_up = unsafe { libc::ioctl(fd, libc::SIOCGIFFLAGS, &mut ifr_flags) } >= 0
-            && (ifr_flags.ifr_ifru.ifru_flags & (libc::IFF_UP as i16 as i32)) != 0;
+            && unsafe { ifr_flags.ifr_ifru.ifru_flags & libc::IFF_UP as i16 } != 0;
         let is_loopback = unsafe { libc::ioctl(fd, libc::SIOCGIFFLAGS, &mut ifr_flags) } >= 0
-            && (ifr_flags.ifr_ifru.ifru_flags & (libc::IFF_LOOPBACK as i16 as i32)) != 0;
+            && unsafe { ifr_flags.ifr_ifru.ifru_flags & libc::IFF_LOOPBACK as i16 } != 0;
 
         // MAC address
         let mut ifr_hw = unsafe { std::mem::zeroed::<libc::ifreq>() };
         copy_ifname(&mut ifr_hw, &name);
         let mac = if unsafe { libc::ioctl(fd, libc::SIOCGIFHWADDR, &mut ifr_hw) } >= 0 {
-            let sa = &ifr_hw.ifr_ifru.ifru_hwaddr;
+            let sa = unsafe { &ifr_hw.ifr_ifru.ifru_hwaddr };
             Some([sa.sa_data[0] as u8, sa.sa_data[1] as u8, sa.sa_data[2] as u8,
                   sa.sa_data[3] as u8, sa.sa_data[4] as u8, sa.sa_data[5] as u8])
         } else { None };
@@ -78,7 +78,7 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
         let mut ifr_addr = unsafe { std::mem::zeroed::<libc::ifreq>() };
         copy_ifname(&mut ifr_addr, &name);
         let ips = if unsafe { libc::ioctl(fd, libc::SIOCGIFADDR, &mut ifr_addr) } >= 0 {
-            let sa = &ifr_addr.ifr_ifru.ifru_addr;
+            let sa = unsafe { &ifr_addr.ifr_ifru.ifru_addr };
             if sa.sa_family as i32 == libc::AF_INET {
                 let addr_bytes = unsafe { (*(sa as *const libc::sockaddr as *const libc::sockaddr_in)).sin_addr.s_addr };
                 let ip = IpAddr::V4(std::net::Ipv4Addr::from(u32::from_be(addr_bytes)));

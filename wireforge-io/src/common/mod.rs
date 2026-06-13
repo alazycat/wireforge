@@ -1,14 +1,12 @@
 //! Cross-platform utility functions shared by all platform backends.
 
-use std::os::fd::AsRawFd;
 use std::time::Duration;
 
 /// Set socket receive timeout (SO_RCVTIMEO) across platforms.
 ///
 /// Linux/macOS use `timeval`, Windows uses `DWORD` (milliseconds).
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-pub fn set_socket_timeout(fd: impl AsRawFd, dur: Option<Duration>) -> Result<(), crate::error::IoError> {
-    use std::os::fd::AsRawFd;
+pub fn set_socket_timeout(fd: i32, dur: Option<Duration>) -> Result<(), crate::error::IoError> {
     let tv = dur.map(|d| libc::timeval {
         tv_sec: d.as_secs() as libc::time_t,
         tv_usec: d.subsec_micros() as libc::suseconds_t,
@@ -17,7 +15,6 @@ pub fn set_socket_timeout(fd: impl AsRawFd, dur: Option<Duration>) -> Result<(),
         Some(t) => t,
         None => std::ptr::null(),
     };
-    let fd = fd.as_raw_fd();
     unsafe {
         if libc::setsockopt(
             fd,
@@ -34,7 +31,7 @@ pub fn set_socket_timeout(fd: impl AsRawFd, dur: Option<Duration>) -> Result<(),
 }
 
 #[cfg(target_os = "windows")]
-pub fn set_socket_timeout(_fd: impl AsRawFd, _dur: Option<Duration>) -> Result<(), crate::error::IoError> {
+pub fn set_socket_timeout(_fd: i32, _dur: Option<Duration>) -> Result<(), crate::error::IoError> {
     // Windows uses setsockopt with DWORD timeout in milliseconds.
     // Placeholder until Issue #32 implements Windows L3.
     Err(crate::error::IoError::UnsupportedPlatform)

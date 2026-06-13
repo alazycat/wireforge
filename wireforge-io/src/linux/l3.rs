@@ -67,7 +67,7 @@ impl L3Receiver {
 
     /// Set receive timeout.
     pub fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError> {
-        common::set_socket_timeout(&self.sock, dur)
+        common::set_socket_timeout(self.sock.as_raw_fd(), dur)
     }
 }
 

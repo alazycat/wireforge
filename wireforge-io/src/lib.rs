@@ -25,6 +25,7 @@
 //! L2 capture requires root (Linux/macOS) or Administrator (Windows).
 //! `list_interfaces()` does not require elevated privileges.
 
+mod common;
 mod error;
 pub mod traits;
 
