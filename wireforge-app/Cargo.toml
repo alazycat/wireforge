@@ -1,0 +1,10 @@
+[package]
+name = "wireforge-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Application-layer protocol parsers/builders and pcap file I/O"
+
+[dependencies]
+wireforge-packet = { path = "../wireforge-packet" }

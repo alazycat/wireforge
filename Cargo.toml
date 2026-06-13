@@ -3,6 +3,7 @@ members = [
     "wireforge-core",
     "wireforge-packet",
     "wireforge-io",
+    "wireforge-app",
 ]
 resolver = "2"
 
