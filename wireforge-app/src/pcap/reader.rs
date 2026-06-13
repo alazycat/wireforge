@@ -62,7 +62,7 @@ impl<R: Read> Iterator for PcapReader<R> {
         match self.reader.read_exact(&mut rec_hdr) {
             Ok(_) => {},
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return None,
-            Err(e) => return Some(Err(e.into())),
+            Err(e) => return Some(Err(e)),
         }
         let ts_sec = read_u32(&rec_hdr[0..4], self.endian);
         let ts_usec = read_u32(&rec_hdr[4..8], self.endian);
@@ -70,7 +70,7 @@ impl<R: Read> Iterator for PcapReader<R> {
 
         let mut data = vec![0u8; incl_len];
         if let Err(e) = self.reader.read_exact(&mut data) {
-            return Some(Err(e.into()));
+            return Some(Err(e));
         }
         Some(Ok((Duration::new(ts_sec as u64, ts_usec * 1000), data)))
     }

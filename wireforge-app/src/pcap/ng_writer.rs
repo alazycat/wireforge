@@ -41,7 +41,7 @@ impl<W: Write> PcapNgWriter<W> {
         self.writer.write_all(&(epb_total_len as u32).to_be_bytes())?;
         self.writer.write_all(&0u32.to_be_bytes())?; // interface_id
         self.writer.write_all(&(ts.as_secs() as u32).to_be_bytes())?; // ts_high
-        self.writer.write_all(&(ts.subsec_nanos() as u32).to_be_bytes())?; // ts_low
+        self.writer.write_all(&ts.subsec_nanos().to_be_bytes())?; // ts_low
         self.writer.write_all(&(packet.len() as u32).to_be_bytes())?; // captured_len
         self.writer.write_all(&(packet.len() as u32).to_be_bytes())?; // original_len
         self.writer.write_all(packet)?;

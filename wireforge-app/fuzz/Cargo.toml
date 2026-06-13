@@ -1,0 +1,38 @@
+[package]
+name = "wireforge-app-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.wireforge-app]
+path = ".."
+
+[[bin]]
+name = "dns"
+path = "fuzz_targets/dns.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "dhcp"
+path = "fuzz_targets/dhcp.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "ntp"
+path = "fuzz_targets/ntp.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "http"
+path = "fuzz_targets/http.rs"
+test = false
+doc = false

@@ -24,7 +24,7 @@ impl<W: Write> PcapWriter<W> {
 
     pub fn write(&mut self, ts: Duration, packet: &[u8]) -> Result<(), std::io::Error> {
         self.writer.write_all(&(ts.as_secs() as u32).to_be_bytes())?;
-        self.writer.write_all(&(ts.subsec_micros() as u32).to_be_bytes())?;
+        self.writer.write_all(&ts.subsec_micros().to_be_bytes())?;
         self.writer.write_all(&(packet.len() as u32).to_be_bytes())?;
         self.writer.write_all(&(packet.len() as u32).to_be_bytes())?;
         self.writer.write_all(packet)?;

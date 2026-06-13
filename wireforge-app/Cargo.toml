@@ -8,3 +8,14 @@ description = "Application-layer protocol parsers/builders and pcap file I/O"
 
 [dependencies]
 wireforge-packet = { path = "../wireforge-packet" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "dns_parse_bench"
+harness = false
+
+[[bench]]
+name = "pcap_read_bench"
+harness = false

@@ -50,7 +50,7 @@ fn ntp_short_to_duration(val: u32) -> Duration {
 fn ntp_timestamp_to_duration(seconds: u32, fraction: u32) -> Option<Duration> {
     if seconds == 0 && fraction == 0 { return None; }
     let secs = seconds.saturating_sub(NTP_EPOCH_DELTA) as u64;
-    let nanos = ((fraction as u64) * 1_000_000_000 >> 32) as u32;
+    let nanos = (((fraction as u64) * 1_000_000_000) >> 32) as u32;
     Some(Duration::new(secs, nanos))
 }
 
