@@ -1,6 +1,5 @@
 //! Ethernet II frame parser and builder.
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::types::EtherType;

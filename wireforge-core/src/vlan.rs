@@ -1,6 +1,5 @@
 //! IEEE 802.1Q / 802.1ad VLAN tag parser.
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::types::EtherType;
@@ -52,7 +51,7 @@ impl<'a> VlanPacket<'a> {
     /// The TPID / encapsulating EtherType.
     #[inline]
     pub fn tpid(&self) -> EtherType {
-        EtherType::Unknown(read_u16be(&self.buf[..2]) & 0xFFFF)
+        EtherType::Unknown(read_u16be(&self.buf[..2]))
     }
 
     /// The inner EtherType (next protocol after the VLAN tag).
