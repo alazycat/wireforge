@@ -13,6 +13,14 @@ pub const DNS_HEADER_LEN: usize = 12;
 #[derive(Debug, Clone)]
 pub struct DnsPacket<'a> {
     buf: &'a [u8],
+    /// Pre-computed byte offsets for each section (computed once in `new()`).
+    answers_start: usize,
+    authorities_start: usize,
+    additionals_start: usize,
+    questions_count: u16,
+    answers_count: u16,
+    authorities_count: u16,
+    additionals_count: u16,
 }
 
 impl<'a> DnsPacket<'a> {
@@ -20,154 +28,93 @@ impl<'a> DnsPacket<'a> {
         if buf.len() < DNS_HEADER_LEN {
             return None;
         }
-        Some(Self { buf })
+        // Walk all sections once to pre-compute start positions.
+        let qc = read_u16be(&buf[4..6]) as usize;
+        let ac = read_u16be(&buf[6..8]) as usize;
+        let nc = read_u16be(&buf[8..10]) as usize;
+        let dc = read_u16be(&buf[10..12]) as usize;
+
+        let mut pos = DNS_HEADER_LEN;
+        // Skip questions
+        pos = skip_questions(buf, pos, qc);
+        let answers_start = pos;
+        // Skip answers
+        pos = skip_records(buf, pos, ac);
+        let authorities_start = pos;
+        // Skip authorities
+        pos = skip_records(buf, pos, nc);
+        let additionals_start = pos;
+
+        Some(Self {
+            buf,
+            answers_start, authorities_start, additionals_start,
+            questions_count: qc as u16, answers_count: ac as u16,
+            authorities_count: nc as u16, additionals_count: dc as u16,
+        })
     }
 
-    #[inline]
-    pub fn transaction_id(&self) -> u16 {
-        read_u16be(&self.buf[..2])
-    }
+    #[inline] pub fn transaction_id(&self) -> u16 { read_u16be(&self.buf[..2]) }
+    #[inline] pub fn flags(&self) -> u16 { read_u16be(&self.buf[2..4]) }
+    #[inline] pub fn qr(&self) -> bool { self.flags() & 0x8000 != 0 }
+    #[inline] pub fn opcode(&self) -> DnsOpcode { DnsOpcode::from(((self.flags() >> 11) & 0x0F) as u8) }
+    #[inline] pub fn aa(&self) -> bool { self.flags() & 0x0400 != 0 }
+    #[inline] pub fn tc(&self) -> bool { self.flags() & 0x0200 != 0 }
+    #[inline] pub fn rd(&self) -> bool { self.flags() & 0x0100 != 0 }
+    #[inline] pub fn ra(&self) -> bool { self.flags() & 0x0080 != 0 }
+    #[inline] pub fn rcode(&self) -> DnsRcode { DnsRcode::from((self.flags() & 0x000F) as u8) }
 
-    #[inline]
-    pub fn flags(&self) -> u16 {
-        read_u16be(&self.buf[2..4])
-    }
-
-    #[inline]
-    pub fn qr(&self) -> bool {
-        self.flags() & 0x8000 != 0
-    }
-
-    #[inline]
-    pub fn opcode(&self) -> DnsOpcode {
-        DnsOpcode::from(((self.flags() >> 11) & 0x0F) as u8)
-    }
-
-    #[inline]
-    pub fn aa(&self) -> bool {
-        self.flags() & 0x0400 != 0
-    }
-
-    #[inline]
-    pub fn tc(&self) -> bool {
-        self.flags() & 0x0200 != 0
-    }
-
-    #[inline]
-    pub fn rd(&self) -> bool {
-        self.flags() & 0x0100 != 0
-    }
-
-    #[inline]
-    pub fn ra(&self) -> bool {
-        self.flags() & 0x0080 != 0
-    }
-
-    #[inline]
-    pub fn rcode(&self) -> DnsRcode {
-        DnsRcode::from((self.flags() & 0x000F) as u8)
-    }
-
-    #[inline]
-    pub fn questions_count(&self) -> u16 {
-        read_u16be(&self.buf[4..6])
-    }
-
-    #[inline]
-    pub fn answers_count(&self) -> u16 {
-        read_u16be(&self.buf[6..8])
-    }
-
-    #[inline]
-    pub fn authorities_count(&self) -> u16 {
-        read_u16be(&self.buf[8..10])
-    }
-
-    #[inline]
-    pub fn additionals_count(&self) -> u16 {
-        read_u16be(&self.buf[10..12])
-    }
+    #[inline] pub fn questions_count(&self) -> u16 { self.questions_count }
+    #[inline] pub fn answers_count(&self) -> u16 { self.answers_count }
+    #[inline] pub fn authorities_count(&self) -> u16 { self.authorities_count }
+    #[inline] pub fn additionals_count(&self) -> u16 { self.additionals_count }
 
     /// Iterate over the Question section.
     pub fn questions(&self) -> DnsQuestionIter<'a> {
         DnsQuestionIter {
             buf: self.buf,
             pos: DNS_HEADER_LEN,
-            remaining: self.questions_count() as usize,
+            remaining: self.questions_count as usize,
         }
     }
 
     /// Iterate over the Answer section.
     pub fn answers(&self) -> DnsRecordIter<'a> {
-        // Skip questions first
-        let mut pos = DNS_HEADER_LEN;
-        let qcount = self.questions_count() as usize;
-        for _ in 0..qcount {
-            if let Some((_, next)) = parse_name(self.buf, pos) {
-                pos = next + 4; // QTYPE(2) + QCLASS(2)
-            }
-        }
-        DnsRecordIter {
-            buf: self.buf,
-            pos,
-            remaining: self.answers_count() as usize,
-        }
+        DnsRecordIter { buf: self.buf, pos: self.answers_start, remaining: self.answers_count as usize }
     }
 
     /// Iterate over the Authority section.
     pub fn authorities(&self) -> DnsRecordIter<'a> {
-        let mut pos = DNS_HEADER_LEN;
-        let qcount = self.questions_count() as usize;
-        let acount = self.answers_count() as usize;
-        for _ in 0..qcount {
-            if let Some((_, next)) = parse_name(self.buf, pos) {
-                pos = next + 4;
-            }
-        }
-        for _ in 0..acount {
-            if let Some((_, next)) = parse_name(self.buf, pos) {
-                pos = next + 10; // TYPE(2)+CLASS(2)+TTL(4)+RDLEN(2)
-                let rdlen = read_u16be(&self.buf[pos - 2..pos]) as usize;
-                pos += rdlen;
-            }
-        }
-        DnsRecordIter {
-            buf: self.buf,
-            pos,
-            remaining: self.authorities_count() as usize,
-        }
+        DnsRecordIter { buf: self.buf, pos: self.authorities_start, remaining: self.authorities_count as usize }
     }
 
     /// Iterate over the Additional section.
     pub fn additionals(&self) -> DnsRecordIter<'a> {
-        let total_before = self.questions_count() as usize
-            + self.answers_count() as usize
-            + self.authorities_count() as usize;
-        let mut pos = DNS_HEADER_LEN;
-        let mut skipped = 0usize;
-        let qc = self.questions_count() as usize;
-        while skipped < total_before {
-            if let Some((_, next)) = parse_name(self.buf, pos) {
-                if skipped < qc {
-                    pos = next + 4;
-                } else {
-                    pos = next + 10;
-                    if pos <= self.buf.len() {
-                        let rdlen = read_u16be(&self.buf[pos - 2..pos]) as usize;
-                        pos += rdlen;
-                    }
-                }
-                skipped += 1;
-            } else {
-                break;
-            }
-        }
-        DnsRecordIter {
-            buf: self.buf,
-            pos,
-            remaining: self.additionals_count() as usize,
+        DnsRecordIter { buf: self.buf, pos: self.additionals_start, remaining: self.additionals_count as usize }
+    }
+}
+
+/// Walk past `count` question entries starting at `pos`. Returns new position.
+fn skip_questions(buf: &[u8], mut pos: usize, count: usize) -> usize {
+    for _ in 0..count {
+        if let Some((_, next)) = parse_name(buf, pos) {
+            pos = next + 4; // QTYPE(2) + QCLASS(2)
         }
     }
+    pos
+}
+
+/// Walk past `count` resource record entries starting at `pos`. Returns new position.
+fn skip_records(buf: &[u8], mut pos: usize, count: usize) -> usize {
+    for _ in 0..count {
+        if let Some((_, next)) = parse_name(buf, pos) {
+            pos = next + 10; // TYPE(2)+CLASS(2)+TTL(4)+RDLEN(2)
+            if pos >= 2 {
+                let rdlen = read_u16be(&buf[pos - 2..pos]) as usize;
+                pos += rdlen;
+            }
+        }
+    }
+    pos
 }
 
 /// A DNS question entry.
