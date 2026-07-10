@@ -105,7 +105,7 @@ mod tests {
     fn parse_single_vlan_tag() {
         // TPID=0x8100, PCP=3, DEI=1, VID=100, inner EtherType=0x0800
         let data = [
-            0x60 | 0x10 | 0x00, 0x64, // PCP=3, DEI=1, VID=100
+            0x70, 0x64, // PCP=3, DEI=1, VID=100
             0x08, 0x00, // IPv4
         ];
         let vlan = VlanPacket::new(&data).unwrap();

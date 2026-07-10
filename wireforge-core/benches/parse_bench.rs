@@ -1,12 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use wireforge_core::arp::ArpPacket;
 use wireforge_core::ether::EthernetPacket;
-use wireforge_core::icmp::{IcmpPacket, Icmpv6Packet};
 use wireforge_core::ipv4::Ipv4Packet;
 use wireforge_core::ipv6::Ipv6Packet;
 use wireforge_core::tcp::TcpPacket;
 use wireforge_core::udp::UdpPacket;
-use wireforge_core::vlan::VlanPacket;
 
 fn bench_parse_ethernet(c: &mut Criterion) {
     let frame = [

@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn parse_label_too_long() {
         let mut data = vec![64u8]; // label > 63
-        data.extend(std::iter::repeat(b'x').take(64));
+        data.extend(std::iter::repeat_n(b'x', 64));
         assert!(parse_name(&data, 0).is_none());
     }
 
