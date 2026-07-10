@@ -27,6 +27,10 @@ impl<'a> Ipv6Packet<'a> {
         Some(Self { buf })
     }
 
+    /// Raw bytes backing this packet.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+
     #[inline]
     pub fn version(&self) -> u8 {
         self.buf[0] >> 4

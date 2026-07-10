@@ -94,6 +94,72 @@ fn add_slice_to_sum(mut sum: u32, mut data: &[u8]) -> u32 {
 }
 
 // ---------------------------------------------------------------------------
+// Checksum seal helpers — zero the field, compute, and write back in one call.
+// ---------------------------------------------------------------------------
+
+/// Zero the 2-byte checksum field at `csum_offset`, compute the internet
+/// checksum over `buf`, and write the result back.
+#[inline]
+pub fn seal_internet_checksum(buf: &mut [u8], csum_offset: usize) {
+    buf[csum_offset] = 0;
+    buf[csum_offset + 1] = 0;
+    let csum = internet_checksum(buf);
+    write_u16be(&mut buf[csum_offset..csum_offset + 2], csum);
+}
+
+/// Zero the 2-byte checksum field at `csum_offset`, compute the TCP/UDP
+/// pseudo-header checksum over `buf`, and write the result back.
+#[inline]
+pub fn seal_transport_checksum(buf: &mut [u8], csum_offset: usize, src: &[u8], dst: &[u8], protocol: u8) {
+    buf[csum_offset] = 0;
+    buf[csum_offset + 1] = 0;
+    let csum = pseudo_header_checksum(src, dst, protocol, buf);
+    write_u16be(&mut buf[csum_offset..csum_offset + 2], csum);
+}
+
+/// Generate a standard parser `new()` method with a minimum-length check.
+///
+/// Usage: `parser_new!(UDP_HEADER_LEN);` inside an `impl<'a> FooPacket<'a>` block
+/// where the struct has a `buf: &'a [u8]` field.
+#[macro_export]
+macro_rules! parser_new {
+    ($min_len:expr) => {
+        #[inline]
+        pub fn new(buf: &'a [u8]) -> Option<Self> {
+            if buf.len() < $min_len { return None; }
+            Some(Self { buf })
+        }
+    };
+}
+
+// ---------------------------------------------------------------------------
+// PacketBuilder trait — Template Method pattern
+// ---------------------------------------------------------------------------
+
+/// Common interface for all packet builders.
+///
+/// This is the **Template Method** pattern: every builder follows the same
+/// high-level construction sequence (validate → assemble header → seal
+/// checksum → append payload), but customizes the concrete steps via its
+/// own field values and the checksum helpers ([`seal_internet_checksum`]
+/// and [`seal_transport_checksum`]).
+///
+/// # Template sequence
+///
+/// 1. **Validate** — reject field values that violate protocol constraints
+/// 2. **Assemble header** — write fixed and variable fields into the buffer
+/// 3. **Seal checksum** — zero the checksum field, compute, write back
+/// 4. **Append payload** — attach the user-supplied payload bytes
+/// 5. **Return** — hand back the complete `Vec<u8>` packet
+pub trait PacketBuilder {
+    /// The final assembled output (typically `Vec<u8>`).
+    type Output;
+
+    /// Execute the construction template and return the assembled packet.
+    fn build(self) -> Self::Output;
+}
+
+// ---------------------------------------------------------------------------
 // Builder error type
 // ---------------------------------------------------------------------------
 

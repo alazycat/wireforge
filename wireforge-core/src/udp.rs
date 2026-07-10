@@ -4,7 +4,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::net::Ipv4Addr;
 
-use crate::util::{pseudo_header_checksum, read_u16be, write_u16be};
+use crate::types::IpProtocol;
+use crate::util::{pseudo_header_checksum, seal_transport_checksum, read_u16be, write_u16be};
 
 pub const UDP_HEADER_LEN: usize = 8;
 
@@ -15,12 +16,11 @@ pub struct UdpPacket<'a> {
 }
 
 impl<'a> UdpPacket<'a> {
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        if buf.len() < UDP_HEADER_LEN {
-            return None;
-        }
-        Some(Self { buf })
-    }
+    crate::parser_new!(UDP_HEADER_LEN);
+
+    /// Raw bytes backing this packet.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
 
     #[inline]
     pub fn source_port(&self) -> u16 {
@@ -56,7 +56,7 @@ impl<'a> UdpPacket<'a> {
         pseudo_header_checksum(
             &src.octets(),
             &dst.octets(),
-            17, // UDP protocol number
+            IpProtocol::Udp.into(),
             self.buf,
         ) == 0
     }
@@ -98,24 +98,14 @@ impl UdpPacketBuilder {
     }
 
     /// Build the UDP packet, computing the checksum (IPv4 pseudo-header).
-    pub fn build(mut self, src: Ipv4Addr, dst: Ipv4Addr) -> Vec<u8> {
-        self.buf[6] = 0;
-        self.buf[7] = 0;
-
+    pub fn build(self, src: Ipv4Addr, dst: Ipv4Addr) -> Vec<u8> {
         let mut packet = self.buf;
         if let Some(ref p) = self.payload {
             packet.extend_from_slice(p);
         }
         let total_len = packet.len();
         write_u16be(&mut packet[4..6], total_len as u16);
-
-        let csum = pseudo_header_checksum(
-            &src.octets(),
-            &dst.octets(),
-            17, // UDP
-            &packet,
-        );
-        write_u16be(&mut packet[6..8], csum);
+        seal_transport_checksum(&mut packet, 6, &src.octets(), &dst.octets(), IpProtocol::Udp.into());
         packet
     }
 }

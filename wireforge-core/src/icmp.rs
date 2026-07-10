@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use core::net::Ipv6Addr;
 
 use crate::types::IpProtocol;
-use crate::util::{internet_checksum, pseudo_header_checksum, read_u16be, read_u32be, write_u16be};
+use crate::util::{internet_checksum, pseudo_header_checksum, seal_internet_checksum, seal_transport_checksum, read_u16be, read_u32be, write_u16be, PacketBuilder};
 
 // ---------------------------------------------------------------------------
 // ICMPv4 constants
@@ -70,12 +70,11 @@ pub struct IcmpPacket<'a> {
 }
 
 impl<'a> IcmpPacket<'a> {
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        if buf.len() < ICMP_HEADER_LEN {
-            return None;
-        }
-        Some(Self { buf })
-    }
+    crate::parser_new!(ICMP_HEADER_LEN);
+
+    /// Raw bytes backing this packet.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
 
     #[inline]
     pub fn type_(&self) -> u8 {
@@ -194,17 +193,20 @@ impl IcmpPacketBuilder {
         self
     }
 
-    pub fn build(mut self) -> Vec<u8> {
-        // Zero checksum, compute over entire message, write it back.
-        self.buf[2] = 0;
-        self.buf[3] = 0;
+    pub fn build(self) -> Vec<u8> {
+        <Self as PacketBuilder>::build(self)
+    }
+}
 
+impl PacketBuilder for IcmpPacketBuilder {
+    type Output = Vec<u8>;
+
+    fn build(self) -> Vec<u8> {
         let mut packet = self.buf;
         if let Some(ref p) = self.payload {
             packet.extend_from_slice(p);
         }
-        let csum = internet_checksum(&packet);
-        write_u16be(&mut packet[2..4], csum);
+        seal_internet_checksum(&mut packet, 2);
         packet
     }
 }
@@ -260,12 +262,11 @@ pub struct Icmpv6Packet<'a> {
 }
 
 impl<'a> Icmpv6Packet<'a> {
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        if buf.len() < ICMPV6_HEADER_LEN {
-            return None;
-        }
-        Some(Self { buf })
-    }
+    crate::parser_new!(ICMPV6_HEADER_LEN);
+
+    /// Raw bytes backing this packet.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
 
     #[inline]
     pub fn type_(&self) -> u8 {
@@ -415,19 +416,10 @@ impl Icmpv6PacketBuilder {
     }
 
     /// Build the ICMPv6 packet, computing the checksum with the IPv6 pseudo-header.
-    pub fn build(mut self, src: Ipv6Addr, dst: Ipv6Addr) -> Vec<u8> {
-        self.buf[2] = 0;
-        self.buf[3] = 0;
-
+    pub fn build(self, src: Ipv6Addr, dst: Ipv6Addr) -> Vec<u8> {
         let mut packet = self.buf;
         packet.extend_from_slice(&self.body);
-        let csum = pseudo_header_checksum(
-            &src.octets(),
-            &dst.octets(),
-            u8::from(IpProtocol::Icmpv6),
-            &packet,
-        );
-        write_u16be(&mut packet[2..4], csum);
+        seal_transport_checksum(&mut packet, 2, &src.octets(), &dst.octets(), IpProtocol::Icmpv6.into());
         packet
     }
 }

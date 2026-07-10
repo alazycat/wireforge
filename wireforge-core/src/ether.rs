@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use crate::types::EtherType;
-use crate::util::{read_u16be, write_u16be};
+use crate::util::{read_u16be, write_u16be, PacketBuilder};
 
 /// Minimum Ethernet II header length (dst MAC + src MAC + ethertype).
 pub const ETHER_HEADER_LEN: usize = 14;
@@ -18,16 +18,11 @@ pub struct EthernetPacket<'a> {
 }
 
 impl<'a> EthernetPacket<'a> {
-    /// Attempt to parse an Ethernet II frame from raw bytes.
-    ///
-    /// Returns `None` if `buf` is shorter than [`ETHER_HEADER_LEN`] (14 bytes).
+    crate::parser_new!(ETHER_HEADER_LEN);
+
+    /// Raw bytes backing this frame.
     #[inline]
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        if buf.len() < ETHER_HEADER_LEN {
-            return None;
-        }
-        Some(Self { buf })
-    }
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
 
     /// Destination MAC address.
     #[inline]
@@ -112,6 +107,14 @@ impl EthernetPacketBuilder {
 
     /// Assemble the complete Ethernet frame.
     pub fn build(self) -> Vec<u8> {
+        <Self as PacketBuilder>::build(self)
+    }
+}
+
+impl PacketBuilder for EthernetPacketBuilder {
+    type Output = Vec<u8>;
+
+    fn build(self) -> Vec<u8> {
         let mut frame = self.buf.to_vec();
         if let Some(ref p) = self.payload {
             frame.extend_from_slice(p);

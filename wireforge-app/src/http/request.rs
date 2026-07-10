@@ -14,7 +14,7 @@ pub struct HttpRequest<'a> {
 }
 
 impl<'a> HttpRequest<'a> {
-    pub fn parse(buf: &'a [u8]) -> Option<Self> {
+    pub fn new(buf: &'a [u8]) -> Option<Self> {
         // Find "METHOD SP URI SP VERSION\r\n"
         let request_line_end = buf.windows(2).position(|w| w == b"\r\n")?;
         let line = &buf[..request_line_end];

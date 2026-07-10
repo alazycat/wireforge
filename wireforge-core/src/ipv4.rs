@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use core::net::Ipv4Addr;
 
 use crate::types::IpProtocol;
-use crate::util::{internet_checksum, read_u16be, read_u32be, write_u16be, write_u32be, BuildError};
+use crate::util::{internet_checksum, seal_internet_checksum, read_u16be, read_u32be, write_u16be, write_u32be, BuildError, PacketBuilder};
 
 /// Minimum IPv4 header length in bytes (without options).
 pub const IPV4_MIN_HEADER_LEN: usize = 20;
@@ -29,6 +29,10 @@ impl<'a> Ipv4Packet<'a> {
         }
         Some(Self { buf })
     }
+
+    /// Raw bytes backing this packet.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
 
     #[inline]
     pub fn version(&self) -> u8 {
@@ -232,15 +236,19 @@ impl Ipv4PacketBuilder {
     }
 
     /// Build the IPv4 packet, computing total_length and header checksum automatically.
-    pub fn build(mut self) -> Vec<u8> {
+    pub fn build(self) -> Vec<u8> {
+        <Self as PacketBuilder>::build(self)
+    }
+}
+
+impl PacketBuilder for Ipv4PacketBuilder {
+    type Output = Vec<u8>;
+
+    fn build(mut self) -> Vec<u8> {
         let total_len = self.buf.len() + self.payload.as_ref().map_or(0, |p| p.len());
         write_u16be(&mut self.buf[2..4], total_len as u16);
 
-        // Zero the checksum field before computing
-        self.buf[10] = 0;
-        self.buf[11] = 0;
-        let checksum = internet_checksum(&self.buf);
-        write_u16be(&mut self.buf[10..12], checksum);
+        seal_internet_checksum(&mut self.buf, 10);
 
         let mut packet = self.buf;
         if let Some(p) = self.payload {

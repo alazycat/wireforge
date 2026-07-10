@@ -15,7 +15,7 @@ pub struct HttpResponse<'a> {
 }
 
 impl<'a> HttpResponse<'a> {
-    pub fn parse(buf: &'a [u8]) -> Option<Self> {
+    pub fn new(buf: &'a [u8]) -> Option<Self> {
         let response_line_end = buf.windows(2).position(|w| w == b"\r\n")?;
         let line = &buf[..response_line_end];
 
@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn parse_200_ok() {
         let data = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<body>hello</body>";
-        let resp = HttpResponse::parse(data).unwrap();
+        let resp = HttpResponse::new(data).unwrap();
         assert_eq!(resp.version(), "HTTP/1.1");
         assert_eq!(resp.status_code(), 200);
         assert_eq!(resp.reason(), "OK");
@@ -74,7 +74,7 @@ mod tests {
     #[test]
     fn parse_404() {
         let data = b"HTTP/1.0 404 Not Found\r\n\r\n";
-        let resp = HttpResponse::parse(data).unwrap();
+        let resp = HttpResponse::new(data).unwrap();
         assert_eq!(resp.status_code(), 404);
         assert_eq!(resp.reason(), "Not Found");
         assert_eq!(resp.body(), b"");
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn parse_get_request() {
         let data = b"GET /index.html HTTP/1.1\r\nHost: example.com\r\n\r\n";
-        let req = crate::http::HttpRequest::parse(data).unwrap();
+        let req = crate::http::HttpRequest::new(data).unwrap();
         assert_eq!(req.method(), "GET");
         assert_eq!(req.uri(), "/index.html");
         assert_eq!(req.version(), "HTTP/1.1");

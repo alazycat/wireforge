@@ -4,7 +4,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::types::{ArpHardwareType, ArpOperation, EtherType};
-use crate::util::{read_u16be, write_u16be, BuildError};
+use crate::util::{read_u16be, BuildError};
 
 /// Minimum ARP packet length for Ethernet/IPv4 (28 bytes: 8-byte header + 2×6 MAC + 2×4 IP).
 pub const ARP_HEADER_LEN: usize = 28;
@@ -16,14 +16,11 @@ pub struct ArpPacket<'a> {
 }
 
 impl<'a> ArpPacket<'a> {
-    /// Attempt to parse an ARP packet. Returns `None` if `buf` is shorter than
-    /// [`ARP_HEADER_LEN`].
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        if buf.len() < ARP_HEADER_LEN {
-            return None;
-        }
-        Some(Self { buf })
-    }
+    crate::parser_new!(ARP_HEADER_LEN);
+
+    /// Raw bytes backing this packet.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
 
     #[inline]
     pub fn hardware_type(&self) -> ArpHardwareType {
@@ -195,7 +192,6 @@ impl ArpPacketBuilder {
             + self.target_hw.len() + self.target_proto.len();
         let mut buf = Vec::with_capacity(total);
 
-        write_u16be(&mut [0u8; 2], self.hw_type);
         buf.extend_from_slice(&self.hw_type.to_be_bytes());
         buf.extend_from_slice(&self.proto_type.to_be_bytes());
         buf.push(self.hw_addr_len);

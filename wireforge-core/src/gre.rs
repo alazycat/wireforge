@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::types::EtherType;
-use crate::util::{internet_checksum, read_u16be, read_u32be, write_u16be};
+use crate::util::{seal_internet_checksum, read_u16be, read_u32be, write_u16be};
 
 pub const GRE_MIN_LEN: usize = 4;
 
@@ -26,10 +26,11 @@ pub struct GrePacket<'a> {
 }
 
 impl<'a> GrePacket<'a> {
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        if buf.len() < GRE_MIN_LEN { return None; }
-        Some(Self { buf })
-    }
+    crate::parser_new!(GRE_MIN_LEN);
+
+    /// Raw bytes backing this packet.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
 
     #[inline]
     pub fn flags(&self) -> u16 {
@@ -186,8 +187,7 @@ impl GrePacketBuilder {
 
         // Compute GRE checksum (RFC 2784: over GRE header + payload)
         if let Some(pos) = csum_pos {
-            let csum = internet_checksum(&pkt);
-            write_u16be(&mut pkt[pos..pos+2], csum);
+            seal_internet_checksum(&mut pkt, pos);
         }
 
         pkt

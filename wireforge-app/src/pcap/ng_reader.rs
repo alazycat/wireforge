@@ -4,6 +4,7 @@ use std::io::Read;
 use std::time::Duration;
 
 use super::types::{Endianness, LinkType, PcapNgBlock};
+use super::PacketCaptureReader;
 
 pub struct PcapNgReader<R: Read> {
     reader: R,
@@ -24,6 +25,24 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     pub fn link_type(&self) -> Option<LinkType> { self.link_type }
+}
+
+impl<R: Read> PacketCaptureReader for PcapNgReader<R> {
+    type Error = std::io::Error;
+
+    fn link_type(&self) -> Option<LinkType> { self.link_type }
+
+    fn next_packet(&mut self) -> Option<Result<(std::time::Duration, Vec<u8>), Self::Error>> {
+        loop {
+            match self.next()? {
+                Ok(PcapNgBlock::EnhancedPacket { timestamp, data }) => {
+                    return Some(Ok((timestamp, data)));
+                }
+                Ok(_) => continue, // skip non-packet blocks
+                Err(e) => return Some(Err(e)),
+            }
+        }
+    }
 }
 
 impl<R: Read> Iterator for PcapNgReader<R> {

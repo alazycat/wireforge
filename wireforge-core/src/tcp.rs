@@ -4,7 +4,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::net::Ipv4Addr;
 
-use crate::util::{pseudo_header_checksum, read_u16be, read_u32be, write_u16be, write_u32be};
+use crate::types::IpProtocol;
+use crate::util::{pseudo_header_checksum, seal_transport_checksum, read_u16be, read_u32be, write_u16be, write_u32be};
 
 pub const TCP_MIN_HEADER_LEN: usize = 20;
 
@@ -15,6 +16,9 @@ const FLAG_RST: u8 = 0x04;
 const FLAG_PSH: u8 = 0x08;
 const FLAG_ACK: u8 = 0x10;
 const FLAG_URG: u8 = 0x20;
+
+/// Default TCP data offset (5 × 4 = 20-byte header, no options).
+const DEFAULT_DATA_OFFSET: u8 = 5;
 
 // TCP option kinds
 const OPT_END: u8 = 0;
@@ -152,6 +156,10 @@ impl<'a> TcpPacket<'a> {
         Some(Self { buf })
     }
 
+    /// Raw bytes backing this packet.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+
     #[inline]
     pub fn source_port(&self) -> u16 {
         read_u16be(&self.buf[..2])
@@ -253,8 +261,8 @@ impl<'a> TcpPacket<'a> {
         pseudo_header_checksum(
             &src.octets(),
             &dst.octets(),
-            6, // TCP protocol number
-            &self.buf[..self.header_length() + self.payload().len()],
+            IpProtocol::Tcp.into(),
+            self.buf,
         ) == 0
     }
 }
@@ -278,7 +286,7 @@ impl Default for TcpPacketBuilder {
 impl TcpPacketBuilder {
     pub fn new() -> Self {
         let mut buf = vec![0u8; TCP_MIN_HEADER_LEN];
-        buf[12] = 0x50; // data_offset = 5, reserved
+        buf[12] = DEFAULT_DATA_OFFSET << 4;
         Self { buf, options: Vec::new(), payload: None }
     }
 
@@ -395,10 +403,6 @@ impl TcpPacketBuilder {
         let total_hdr_words = (TCP_MIN_HEADER_LEN + self.options.len()) / 4;
         self.buf[12] = (total_hdr_words as u8) << 4;
 
-        // Zero checksum
-        self.buf[16] = 0;
-        self.buf[17] = 0;
-
         let mut packet = self.buf;
         if !self.options.is_empty() {
             packet.extend_from_slice(&self.options);
@@ -406,15 +410,7 @@ impl TcpPacketBuilder {
         if let Some(ref p) = self.payload {
             packet.extend_from_slice(p);
         }
-
-        let csum = pseudo_header_checksum(
-            &src.octets(),
-            &dst.octets(),
-            6, // TCP
-            &packet,
-        );
-        write_u16be(&mut packet[16..18], csum);
-
+        seal_transport_checksum(&mut packet, 16, &src.octets(), &dst.octets(), IpProtocol::Tcp.into());
         packet
     }
 }
@@ -434,7 +430,7 @@ mod tests {
         write_u16be(&mut data[2..4], 80);
         write_u32be(&mut data[4..8], 1);      // seq
         write_u32be(&mut data[8..12], 0);      // ack
-        data[12] = 0x50; // data_offset=5
+        data[12] = DEFAULT_DATA_OFFSET << 4;
         data[13] = FLAG_SYN;
         write_u16be(&mut data[14..16], 65535); // window
         data
@@ -463,7 +459,7 @@ mod tests {
         assert!(TcpPacket::new(&[0u8; 19]).is_none());
         // 20 bytes with data_offset=5 is valid
         let mut d = [0u8; 20];
-        d[12] = 0x50;
+        d[12] = DEFAULT_DATA_OFFSET << 4;
         assert!(TcpPacket::new(&d).is_some());
     }
 

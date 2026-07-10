@@ -4,6 +4,7 @@ use std::io::Read;
 use std::time::Duration;
 
 use super::types::{Endianness, LinkType, PcapHeader};
+use super::PacketCaptureReader;
 
 #[inline]
 fn read_u32(buf: &[u8], endian: Endianness) -> u32 {
@@ -73,6 +74,16 @@ impl<R: Read> Iterator for PcapReader<R> {
             return Some(Err(e));
         }
         Some(Ok((Duration::new(ts_sec as u64, ts_usec * 1000), data)))
+    }
+}
+
+impl<R: Read> PacketCaptureReader for PcapReader<R> {
+    type Error = std::io::Error;
+
+    fn link_type(&self) -> Option<LinkType> { Some(self.link_type()) }
+
+    fn next_packet(&mut self) -> Option<Result<(std::time::Duration, Vec<u8>), Self::Error>> {
+        self.next()
     }
 }
 

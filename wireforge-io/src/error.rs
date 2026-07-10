@@ -13,10 +13,6 @@ pub enum IoError {
     UnsupportedVersion { major: u16, minor: u16 },
     /// Truncated pcap record.
     TruncatedRecord { expected: u32, got: usize },
-    /// DNS name label exceeds 63 bytes.
-    NameTooLong(usize),
-    /// DNS name compression pointer loop detected.
-    CompressionLoop,
     /// Specified interface does not exist.
     InterfaceNotFound(String),
     /// Permission denied (root or Administrator required).
@@ -42,8 +38,6 @@ impl core::fmt::Display for IoError {
             Self::TruncatedRecord { expected, got } => {
                 write!(f, "truncated pcap record: expected {expected} bytes, got {got}")
             }
-            Self::NameTooLong(len) => write!(f, "DNS name label too long: {len} bytes (max 63)"),
-            Self::CompressionLoop => write!(f, "DNS name compression loop detected"),
             Self::InterfaceNotFound(name) => write!(f, "interface not found: {name}"),
             Self::PermissionDenied => write!(f, "permission denied (root/Administrator required)"),
             Self::Bpf(msg) => write!(f, "BPF error: {msg}"),

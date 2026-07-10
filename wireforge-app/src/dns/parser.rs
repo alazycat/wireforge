@@ -237,6 +237,7 @@ impl<'a> Iterator for DnsRecordIter<'a> {
         }
 
         let qtype = DnsType::from(read_u16be(&self.buf[next..next + 2]));
+        // DNS class is read for offset tracking; type-specific parsing validates it implicitly.
         let _qclass = read_u16be(&self.buf[next + 2..next + 4]);
         let ttl = read_u32be(&self.buf[next + 4..next + 8]);
         let rdlen = read_u16be(&self.buf[next + 8..next + 10]) as usize;
@@ -258,8 +259,8 @@ impl<'a> Iterator for DnsRecordIter<'a> {
                 }
             }
             DnsType::AAAA => {
-                if rdata.len() >= 16 {
-                    let b: [u8; 16] = rdata[..16].try_into().unwrap();
+                let b: Option<[u8; 16]> = rdata.get(..16).and_then(|s| s.try_into().ok());
+                if let Some(b) = b {
                     DnsRecord::AAAA { name, ttl, addr: Ipv6Addr::from(b) }
                 } else {
                     DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() }
@@ -290,31 +291,7 @@ impl<'a> Iterator for DnsRecordIter<'a> {
                     .map(|(pt, _)| DnsRecord::PTR { name: name.clone(), ttl, ptrdname: pt })
                     .unwrap_or(DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() })
             }
-            DnsType::SOA => {
-                if rdata.len() >= 20 {
-                    let mname = parse_name(self.buf, rdata_start).map(|(m, _)| m).unwrap_or_default();
-                    let mut mname_end = rdata_start;
-                    if let Some((_, nxt)) = parse_name(self.buf, rdata_start) { mname_end = nxt; }
-                    let rname = parse_name(self.buf, mname_end).map(|(r, _)| r).unwrap_or_default();
-                    let mut rname_end = mname_end;
-                    if let Some((_, nxt)) = parse_name(self.buf, mname_end) { rname_end = nxt; }
-                    if rname_end + 20 <= rdata_start + rdlen {
-                        let nums = &self.buf[rname_end..rname_end + 20];
-                        DnsRecord::SOA {
-                            name, ttl, mname, rname,
-                            serial: read_u32be(&nums[..4]),
-                            refresh: read_u32be(&nums[4..8]),
-                            retry: read_u32be(&nums[8..12]),
-                            expire: read_u32be(&nums[12..16]),
-                            minimum: read_u32be(&nums[16..20]),
-                        }
-                    } else {
-                        DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() }
-                    }
-                } else {
-                    DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() }
-                }
-            }
+            DnsType::SOA => parse_soa_rdata(self.buf, rdata_start, rdlen, name, ttl, qtype),
             DnsType::TXT => {
                 DnsRecord::TXT { name, ttl, data: rdata.to_vec() }
             }
@@ -338,6 +315,41 @@ impl<'a> Iterator for DnsRecordIter<'a> {
         self.pos = record_end;
         self.remaining -= 1;
         Some(record)
+    }
+}
+
+/// Parse the rdata of an SOA record into a [`DnsRecord::SOA`].
+fn parse_soa_rdata(
+    buf: &[u8],
+    rdata_start: usize,
+    rdlen: usize,
+    name: String,
+    ttl: u32,
+    qtype: DnsType,
+) -> DnsRecord {
+    let rdata = &buf[rdata_start..rdata_start + rdlen];
+    if rdata.len() < 20 {
+        return DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() };
+    }
+    let mname = parse_name(buf, rdata_start).map(|(m, _)| m).unwrap_or_default();
+    let mname_end = parse_name(buf, rdata_start)
+        .map(|(_, nxt)| nxt)
+        .unwrap_or(rdata_start);
+    let rname = parse_name(buf, mname_end).map(|(r, _)| r).unwrap_or_default();
+    let rname_end = parse_name(buf, mname_end)
+        .map(|(_, nxt)| nxt)
+        .unwrap_or(mname_end);
+    if rname_end + 20 > rdata_start + rdlen {
+        return DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() };
+    }
+    let nums = &buf[rname_end..rname_end + 20];
+    DnsRecord::SOA {
+        name, ttl, mname, rname,
+        serial: read_u32be(&nums[..4]),
+        refresh: read_u32be(&nums[4..8]),
+        retry: read_u32be(&nums[8..12]),
+        expire: read_u32be(&nums[12..16]),
+        minimum: read_u32be(&nums[16..20]),
     }
 }
 
