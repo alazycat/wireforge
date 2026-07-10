@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.1.0] — 2026-07-10
+
+### Added (wireforge-app)
+
+- TLS ClientHello parser with SNI and supported_versions extraction
+- SSH banner and key exchange init (`SshPacket`) parser
+- MQTT 3.1.1/5.0 parser and builder
+- Modbus TCP parser (MBAP header + function code dispatch)
+- RADIUS authentication/accounting parser with AVP iteration
+- mDNS parser (DNS wire format wrapper)
+- LLMNR parser (DNS wire format wrapper)
+- NetBIOS-NS name query parser with nibble name decoding
+- SMB2 header parser (covers all SMB2 commands on port 445)
+- RDP TPKT header parser
+- `AppPacket` unified application-layer enum with `parse_tcp_application` and `parse_udp_application` port-based dispatch
+
+### Changed (wireforge-packet)
+
+- `Packet` enum is now `#[non_exhaustive]` to allow future L2–L4 protocol variants without breaking downstream exhaustive matches
+
+### Fixed
+
+- Corrected README architecture diagram and version badge to match the current crate dependency graph
+
+---
+
 ## [1.0.0] — 2026-06-13
 
 ### Added (wireforge-core)
