@@ -13,7 +13,8 @@
 //! - NetBIOS-NS — Windows name service
 //! - SMB2 — file sharing negotiate
 //! - RDP — remote desktop connection
-//! - pcap/pcapng — packet capture I/O
+//! - pcap/pcapng — packet capture file I/O
+//! - [`AppPacket`] — unified application-layer packet enum
 
 pub mod dns;   pub mod dhcp;  pub mod ntp;
 pub mod http;  pub mod tls;   pub mod ssh;
@@ -21,3 +22,6 @@ pub mod mqtt;  pub mod modbus;
 pub mod radius;pub mod mdns;  pub mod llmnr;
 pub mod netbios; pub mod smb2; pub mod rdp;
 pub mod pcap;
+
+pub mod app_packet;
+pub use app_packet::AppPacket;

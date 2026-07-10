@@ -68,6 +68,7 @@ struct PcapIfT {
 #[link(name = "kernel32")]
 extern "system" {
     fn LoadLibraryA(lpFileName: *const u8) -> *mut std::ffi::c_void;
+    #[allow(dead_code)]
     fn FreeLibrary(hModule: *mut std::ffi::c_void) -> c_int;
     fn GetProcAddress(hModule: *mut std::ffi::c_void, lpProcName: *const u8) -> Option<unsafe extern "system" fn()>;
 }

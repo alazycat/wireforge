@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::net::Ipv4Addr;
 
-use crate::util::{internet_checksum, read_u16be, write_u16be};
+use crate::util::{internet_checksum, seal_internet_checksum, read_u16be, PacketBuilder};
 
 pub const IGMP_MIN_LEN: usize = 8;
 
@@ -16,24 +16,29 @@ const TYPE_REPORT_V2: u8 = 0x16;
 const TYPE_LEAVE_V2: u8 = 0x17;
 const TYPE_REPORT_V3: u8 = 0x22;
 
-/// IGMP protocol version.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IgmpVersion { V1, V2, V3 }
-
 /// Parsed IGMP message variant.
 #[derive(Debug, Clone)]
 pub enum IgmpMessage<'a> {
-    MembershipQuery {
-        version: IgmpVersion,
+    /// IGMPv1 Membership Query (general query to 0.0.0.0).
+    MembershipQueryV1 {
+        group_address: Ipv4Addr,
+    },
+    /// IGMPv2 Membership Query (group-specific or general with max response time).
+    MembershipQueryV2 {
         max_response: u8,
         group_address: Ipv4Addr,
-        /// v3: Suppress Router-Side Processing flag
+    },
+    /// IGMPv3 Membership Query with robust-ness, interval, and source list.
+    MembershipQueryV3 {
+        max_response: u8,
+        group_address: Ipv4Addr,
+        /// Suppress Router-Side Processing flag
         supress_router_side: bool,
-        /// v3: Querier's Robustness Variable
+        /// Querier's Robustness Variable
         robustness: u8,
-        /// v3: Querier's Query Interval Code
+        /// Querier's Query Interval Code
         query_interval: u8,
-        /// v3: Source addresses (N × 4 bytes)
+        /// Source addresses (N × 4 bytes)
         sources: &'a [u8],
     },
     MembershipReportV1 {
@@ -63,10 +68,11 @@ pub struct IgmpPacket<'a> {
 }
 
 impl<'a> IgmpPacket<'a> {
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        if buf.len() < IGMP_MIN_LEN { return None; }
-        Some(Self { buf })
-    }
+    crate::parser_new!(IGMP_MIN_LEN);
+
+    /// Raw bytes backing this packet.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
 
     #[inline] pub fn type_(&self) -> u8 { self.buf[0] }
     #[inline] pub fn max_response(&self) -> u8 { self.buf[1] }
@@ -86,37 +92,26 @@ impl<'a> IgmpPacket<'a> {
         match self.type_() {
             TYPE_QUERY => {
                 let grp = self.group_address();
-                if payload.len() >= 4 {
-                    // v3 query has extra fields
+                let max_resp = self.max_response();
+                // v3 query: payload contains reserved(2) + #sources(2) + sources(N×4)
+                if payload.len() >= 4 && (payload.len() - 4).is_multiple_of(4) {
                     let sr_flags = payload[0];
-                    IgmpMessage::MembershipQuery {
-                        version: IgmpVersion::V3,
-                        max_response: self.max_response(),
+                    IgmpMessage::MembershipQueryV3 {
+                        max_response: max_resp,
                         group_address: grp,
                         supress_router_side: (sr_flags & 0x08) != 0,
                         robustness: sr_flags & 0x07,
                         query_interval: payload[1],
                         sources: &payload[4..],
                     }
-                } else if grp == Ipv4Addr::UNSPECIFIED {
-                    IgmpMessage::MembershipQuery {
-                        version: IgmpVersion::V1,
-                        max_response: 0,
+                } else if grp == Ipv4Addr::UNSPECIFIED && max_resp == 0 {
+                    IgmpMessage::MembershipQueryV1 {
                         group_address: grp,
-                        supress_router_side: false,
-                        robustness: 0,
-                        query_interval: 0,
-                        sources: &[],
                     }
                 } else {
-                    IgmpMessage::MembershipQuery {
-                        version: IgmpVersion::V2,
-                        max_response: self.max_response(),
+                    IgmpMessage::MembershipQueryV2 {
+                        max_response: max_resp,
                         group_address: grp,
-                        supress_router_side: false,
-                        robustness: 0,
-                        query_interval: 0,
-                        sources: &[],
                     }
                 }
             }
@@ -191,14 +186,20 @@ impl IgmpPacketBuilder {
         self
     }
 
-    pub fn build(mut self) -> Vec<u8> {
-        self.buf[2] = 0; self.buf[3] = 0;
+    pub fn build(self) -> Vec<u8> {
+        <Self as PacketBuilder>::build(self)
+    }
+}
+
+impl PacketBuilder for IgmpPacketBuilder {
+    type Output = Vec<u8>;
+
+    fn build(self) -> Vec<u8> {
         let mut pkt = self.buf;
         if let Some(p) = self.payload {
             pkt.extend_from_slice(&p);
         }
-        let csum = internet_checksum(&pkt);
-        write_u16be(&mut pkt[2..4], csum);
+        seal_internet_checksum(&mut pkt, 2);
         pkt
     }
 }
@@ -217,11 +218,10 @@ mod tests {
         let pkt = IgmpPacket::new(data).unwrap();
         assert_eq!(pkt.type_(), TYPE_QUERY);
         match pkt.message() {
-            IgmpMessage::MembershipQuery { version, group_address, .. } => {
-                assert_eq!(version, IgmpVersion::V1);
+            IgmpMessage::MembershipQueryV1 { group_address } => {
                 assert_eq!(group_address, Ipv4Addr::UNSPECIFIED);
             }
-            _ => panic!("expected MembershipQuery"),
+            _ => panic!("expected MembershipQueryV1"),
         }
     }
 
@@ -232,11 +232,11 @@ mod tests {
         let pkt = IgmpPacket::new(&data).unwrap();
         assert_eq!(pkt.max_response(), 100);
         match pkt.message() {
-            IgmpMessage::MembershipQuery { version, max_response, .. } => {
-                assert_eq!(version, IgmpVersion::V2);
+            IgmpMessage::MembershipQueryV2 { max_response, group_address } => {
                 assert_eq!(max_response, 100);
+                let _ = group_address;
             }
-            _ => panic!("expected MembershipQuery v2"),
+            _ => panic!("expected MembershipQueryV2"),
         }
     }
 

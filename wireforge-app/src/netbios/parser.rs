@@ -3,6 +3,7 @@ use wireforge_core::util::read_u16be;
 
 pub const NETBIOS_NS_MIN_LEN: usize = 12;
 
+#[derive(Debug, Clone)]
 pub struct NetbiosNsPacket<'a> { buf: &'a [u8] }
 impl<'a> NetbiosNsPacket<'a> {
     pub fn new(buf:&'a[u8])->Option<Self> { if buf.len()<NETBIOS_NS_MIN_LEN{return None;} Some(Self{buf}) }

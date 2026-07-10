@@ -19,6 +19,7 @@ impl<'a> SshBinaryPacket<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SshKexInit<'a> { payload: &'a [u8], cursor: usize }
 
 impl<'a> SshKexInit<'a> {
@@ -31,7 +32,7 @@ impl<'a> SshKexInit<'a> {
     }
 
     pub fn cookie(&self) -> &[u8; 16] {
-        self.payload[1..17].try_into().unwrap()
+        self.payload[1..17].try_into().unwrap() // parse() guarantees payload.len() >= 17
     }
 
     fn next_name_list(&mut self) -> Vec<String> {

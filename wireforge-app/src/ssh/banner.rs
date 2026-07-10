@@ -2,6 +2,7 @@
 
 use std::str;
 
+#[derive(Debug, Clone)]
 pub struct SshBanner<'a> { buf: &'a [u8], proto_end: usize, sw_end: usize }
 
 impl<'a> SshBanner<'a> {

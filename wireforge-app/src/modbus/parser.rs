@@ -5,6 +5,7 @@ use super::types::ModbusFunction;
 const MBAP_HEADER_LEN: usize = 7;
 
 /// Zero-copy Modbus TCP packet parser.
+#[derive(Debug, Clone)]
 pub struct ModbusTcpPacket<'a> { buf: &'a [u8] }
 
 impl<'a> ModbusTcpPacket<'a> {

@@ -31,6 +31,7 @@ pub fn write_remaining_length(len: u32) -> Vec<u8> {
 }
 
 /// Parsed MQTT packet.
+#[derive(Debug, Clone)]
 pub struct MqttPacket<'a> {
     buf: &'a [u8],
     header_len: usize,

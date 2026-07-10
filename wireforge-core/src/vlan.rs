@@ -9,7 +9,7 @@ use crate::util::read_u16be;
 pub const VLAN_HEADER_LEN: usize = 4;
 
 /// Maximum number of VLAN tags to parse before stopping (prevents loops).
-const MAX_VLAN_DEPTH: usize = 2;
+pub const MAX_VLAN_DEPTH: usize = 2;
 
 /// Zero-copy 802.1Q VLAN tag parser.
 ///
@@ -20,15 +20,11 @@ pub struct VlanPacket<'a> {
 }
 
 impl<'a> VlanPacket<'a> {
-    /// Attempt to parse a VLAN tag from raw bytes.
-    ///
-    /// Returns `None` if `buf` is shorter than [`VLAN_HEADER_LEN`] (4 bytes).
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        if buf.len() < VLAN_HEADER_LEN {
-            return None;
-        }
-        Some(Self { buf })
-    }
+    crate::parser_new!(VLAN_HEADER_LEN);
+
+    /// Raw bytes backing this tag.
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
 
     /// Priority Code Point (3 bits).
     #[inline]

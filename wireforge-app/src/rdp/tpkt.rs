@@ -1,4 +1,5 @@
 pub const TPKT_MIN_LEN: usize = 4;
+#[derive(Debug, Clone)]
 pub struct TpktHeader<'a> { buf: &'a [u8] }
 impl<'a> TpktHeader<'a> {
     pub fn parse(buf:&'a[u8])->Option<Self>{

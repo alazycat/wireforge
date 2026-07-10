@@ -8,4 +8,4 @@ readme = "../README.md"
 description = "Unified packet enum and protocol dispatch logic"
 
 [dependencies]
-wireforge-core = { version = "1.0.3", path = "../wireforge-core" }
+wireforge-core = { version = "1.1.0", path = "../wireforge-core" }

@@ -4,6 +4,7 @@ use super::extensions::TlsExtensionsIter;
 use super::handshake::TlsHandshake;
 use super::record::TlsRecord;
 
+#[derive(Debug, Clone)]
 pub struct TlsClientHello<'a> { buf: &'a [u8], client_hello_start: usize }
 
 impl<'a> TlsClientHello<'a> {
@@ -24,8 +25,8 @@ impl<'a> TlsClientHello<'a> {
         u16::from_be_bytes([b[0], b[1]])
     }
 
-    pub fn random(&self) -> &[u8; 32] {
-        self.body()[2..34].try_into().unwrap()
+    pub fn random(&self) -> Option<&[u8; 32]> {
+        self.body().get(2..34)?.try_into().ok()
     }
 
     pub fn session_id(&self) -> &[u8] {

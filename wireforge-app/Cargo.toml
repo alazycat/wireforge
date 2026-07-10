@@ -8,7 +8,7 @@ readme = "../README.md"
 description = "Application-layer protocol parsers/builders and pcap file I/O"
 
 [dependencies]
-wireforge-core = { version = "1.0.3", path = "../wireforge-core" }
+wireforge-core = { version = "1.1.0", path = "../wireforge-core" }
 
 [dev-dependencies]
 criterion = "0.5"

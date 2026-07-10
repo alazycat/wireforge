@@ -3,13 +3,15 @@ use super::types::RadiusCode;
 
 pub const RADIUS_MIN_LEN: usize = 20;
 
+#[derive(Debug, Clone)]
 pub struct RadiusPacket<'a> { buf: &'a [u8] }
 impl<'a> RadiusPacket<'a> {
     pub fn new(buf: &'a [u8]) -> Option<Self> { if buf.len()<RADIUS_MIN_LEN{return None;} Some(Self{buf}) }
     pub fn code(&self)->RadiusCode { RadiusCode::from(self.buf[0]) }
     pub fn identifier(&self)->u8 { self.buf[1] }
     pub fn length(&self)->u16 { u16::from_be_bytes([self.buf[2],self.buf[3]]) }
-    pub fn authenticator(&self)->&[u8;16] { self.buf[4..20].try_into().unwrap() }
+    /// 16-byte authenticator at offset 4. `new()` guarantees buf.len() >= 20.
+    pub fn authenticator(&self) -> &[u8; 16] { self.buf[4..20].try_into().unwrap() }
     pub fn attributes(&self)->RadiusAttributeIter<'a> { RadiusAttributeIter{data:&self.buf[20..]} }
 }
 

@@ -6,6 +6,7 @@ use std::time::Duration;
 ///
 /// Linux/macOS use `timeval`, Windows uses `DWORD` (milliseconds).
 #[cfg(any(target_os = "linux", target_os = "macos"))]
+#[allow(dead_code)]
 pub fn set_socket_timeout(fd: i32, dur: Option<Duration>) -> Result<(), crate::error::IoError> {
     let tv = dur.map(|d| libc::timeval {
         tv_sec: d.as_secs() as libc::time_t,
@@ -31,6 +32,7 @@ pub fn set_socket_timeout(fd: i32, dur: Option<Duration>) -> Result<(), crate::e
 }
 
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 pub fn set_socket_timeout(_fd: i32, _dur: Option<Duration>) -> Result<(), crate::error::IoError> {
     // Windows uses setsockopt with DWORD timeout in milliseconds.
     // Placeholder until Issue #32 implements Windows L3.
