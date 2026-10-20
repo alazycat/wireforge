@@ -10,6 +10,16 @@ use crate::common;
 use crate::error::IoError;
 use crate::traits::{L2Reader, L2Writer};
 
+/// AF_PACKET protocol argument for all EtherTypes, in network byte order.
+///
+/// `packet(7)` requires the protocol passed to `socket(2)` to be a `__be16`
+/// (`socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))`). Passing the host-order
+/// constant registers the socket under the wrong protocol on little-endian
+/// hosts, so it never joins the `ptype_all` list and receives no frames.
+fn eth_p_all_protocol() -> i32 {
+    (libc::ETH_P_ALL as u16).to_be() as i32
+}
+
 /// Receiver for raw L2 Ethernet frames via AF_PACKET socket.
 pub struct L2Receiver {
     sock: Socket,
@@ -23,7 +33,7 @@ impl L2Receiver {
         let sock = Socket::new(
             Domain::PACKET,
             Type::RAW,
-            Some(Protocol::from(libc::ETH_P_ALL)),
+            Some(Protocol::from(eth_p_all_protocol())),
         )?;
 
         // Bind to interface using SO_BINDTODEVICE
@@ -93,7 +103,7 @@ impl L2Sender {
         let sock = Socket::new(
             Domain::PACKET,
             Type::RAW,
-            Some(Protocol::from(libc::ETH_P_ALL)),
+            Some(Protocol::from(eth_p_all_protocol())),
         )?;
 
         let fd = sock.as_raw_fd();
@@ -171,4 +181,19 @@ fn copy_ifname(ifr: &mut libc::ifreq, name: &str) {
     // SAFETY: ifr_name is [i8]; the interface name is ASCII, so reinterpret as i8 is safe.
     let name_i8 = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const i8, len) };
     ifr.ifr_name[..len].copy_from_slice(name_i8);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::eth_p_all_protocol;
+
+    #[test]
+    fn eth_p_all_protocol_is_in_network_byte_order() {
+        let expected = if cfg!(target_endian = "little") {
+            0x0300
+        } else {
+            0x0003
+        };
+        assert_eq!(eth_p_all_protocol() as u16, expected);
+    }
 }
