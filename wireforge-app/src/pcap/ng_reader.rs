@@ -200,6 +200,50 @@ mod tests {
         assert_eq!(reader.link_type(), Some(LinkType::Ethernet));
     }
 
+    fn wrap_le_block(block_type: u32, body: &[u8]) -> Vec<u8> {
+        let len = (12 + body.len()) as u32;
+        let mut out = Vec::new();
+        out.extend_from_slice(&block_type.to_le_bytes());
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(body);
+        out.extend_from_slice(&len.to_le_bytes());
+        out
+    }
+
+    #[test]
+    fn reads_little_endian_pcapng() {
+        let mut data = Vec::new();
+
+        let mut shb = Vec::new();
+        shb.extend_from_slice(&0x1A2B3C4Du32.to_le_bytes());
+        shb.extend_from_slice(&1u16.to_le_bytes());
+        shb.extend_from_slice(&0u16.to_le_bytes());
+        shb.extend_from_slice(&u64::MAX.to_le_bytes());
+        data.extend_from_slice(&wrap_le_block(0x0A0D0D0A, &shb));
+
+        let mut idb = Vec::new();
+        idb.extend_from_slice(&1u16.to_le_bytes()); // Ethernet
+        idb.extend_from_slice(&0u16.to_le_bytes());
+        idb.extend_from_slice(&65535u32.to_le_bytes());
+        data.extend_from_slice(&wrap_le_block(1, &idb));
+
+        let mut epb = Vec::new();
+        epb.extend_from_slice(&0u32.to_le_bytes()); // interface_id
+        epb.extend_from_slice(&0u32.to_le_bytes()); // ts_high
+        epb.extend_from_slice(&1_500_000u32.to_le_bytes()); // ts_low
+        epb.extend_from_slice(&3u32.to_le_bytes()); // captured_len
+        epb.extend_from_slice(&3u32.to_le_bytes()); // original_len
+        epb.extend_from_slice(&[0xAA, 0xBB, 0xCC]);
+        epb.resize(24, 0);
+        data.extend_from_slice(&wrap_le_block(6, &epb));
+
+        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
+        let (ts, packet) = reader.next_packet().unwrap().unwrap();
+        assert_eq!(ts, Duration::from_micros(1_500_000));
+        assert_eq!(packet, vec![0xAA, 0xBB, 0xCC]);
+        assert_eq!(reader.link_type(), Some(LinkType::Ethernet));
+    }
+
     #[test]
     fn truncated_interface_block_returns_error() {
         let mut data = section_header();
