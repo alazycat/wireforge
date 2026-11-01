@@ -1,0 +1,34 @@
+# WireForge fuzzing harness
+#
+# Self-contained mutation fuzzer for the wireforge-core / wireforge-app
+# parsers. Runs on any platform with the stable toolchain (no nightly,
+# no sanitizer runtime required) — designed to also run in CI with a
+# fixed iteration budget:
+#
+#     cargo run --release --manifest-path fuzz/Cargo.toml -- --iters 1000000 --seed 1234
+#
+# On Linux/macOS CI, coverage-guided fuzzing via `cargo-fuzz` can be
+# added later; the parse surfaces exercised here are identical.
+
+[package]
+name = "wireforge-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+wireforge-core = { path = "../wireforge-core" }
+wireforge-app = { path = "../wireforge-app" }
+
+[[bin]]
+name = "wireforge-fuzz"
+path = "src/main.rs"
+
+# Keep fuzz out of the parent workspace: it needs its own profile
+# settings (overflow checks in release).
+[workspace]
+
+[profile.release]
+opt-level = 3
+overflow-checks = true
+debug-assertions = true
