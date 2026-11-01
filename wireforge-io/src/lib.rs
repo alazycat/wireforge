@@ -44,7 +44,7 @@ pub use interface::{list_interfaces, Interface};
 
 // Re-export existing concrete types from their new platform homes
 #[cfg(target_os = "linux")]
-pub use linux::{L2Receiver, L2Sender, L3Receiver, L3Sender};
+pub use linux::{L2Receiver, L2Sender, L3Receiver, L3ReceiverV6, L3Sender, L3SenderV6};
 
 // Platform-adaptive type aliases — use these in cross-platform code.
 // Each alias resolves to the appropriate platform implementation at compile time.
@@ -86,3 +86,25 @@ pub type DefaultL3Writer = linux::L3Sender;
 pub type DefaultL3Writer = macos::BsdL3Sender;
 #[cfg(target_os = "windows")]
 pub type DefaultL3Writer = windows::WinL3Sender;
+
+/// The default L3 IPv6 packet reader for the current platform.
+/// - Linux: [`linux::L3ReceiverV6`] (AF_PACKET cooked socket)
+/// - macOS: [`macos::BsdL3ReceiverV6`] (stub until #4 lands)
+/// - Windows: [`windows::WinL3ReceiverV6`] (Npcap capture)
+#[cfg(target_os = "linux")]
+pub type DefaultL3ReaderV6 = linux::L3ReceiverV6;
+#[cfg(target_os = "macos")]
+pub type DefaultL3ReaderV6 = macos::BsdL3ReceiverV6;
+#[cfg(target_os = "windows")]
+pub type DefaultL3ReaderV6 = windows::WinL3ReceiverV6;
+
+/// The default L3 IPv6 packet sender for the current platform.
+/// - Linux: [`linux::L3SenderV6`] (IPv6 raw socket)
+/// - macOS: [`macos::BsdL3SenderV6`] (stub until #4 lands)
+/// - Windows: [`windows::WinL3SenderV6`] (IPv6 raw socket, requires Administrator)
+#[cfg(target_os = "linux")]
+pub type DefaultL3WriterV6 = linux::L3SenderV6;
+#[cfg(target_os = "macos")]
+pub type DefaultL3WriterV6 = macos::BsdL3SenderV6;
+#[cfg(target_os = "windows")]
+pub type DefaultL3WriterV6 = windows::WinL3SenderV6;

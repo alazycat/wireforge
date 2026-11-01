@@ -16,13 +16,14 @@ use crate::traits::{L2Reader, L2Writer};
 
 #[allow(non_camel_case_types)]
 type bpf_u_int32 = c_uint;
+// Windows `struct timeval` uses 32-bit `long` even on 64-bit targets.
 #[allow(non_camel_case_types)]
-type time_t = i64;
+type time_t = i32;
 
 #[repr(C)]
 struct TimeVal {
     tv_sec: time_t,
-    tv_usec: i64,
+    tv_usec: i32,
 }
 
 #[repr(C)]
@@ -59,6 +60,8 @@ type PcapSendPacketFn =
     unsafe extern "system" fn(p: PcapT, buf: *const c_uchar, size: c_int) -> c_int;
 
 type PcapGetErrFn = unsafe extern "system" fn(p: PcapT) -> *const c_char;
+
+type PcapDatalinkFn = unsafe extern "system" fn(p: PcapT) -> c_int;
 
 #[repr(C)]
 struct PcapIfT {
@@ -115,13 +118,11 @@ struct NpcapFns {
     open_live: PcapOpenLiveFn,
     next_ex: PcapNextExFn,
     close: PcapCloseFn,
-    // Used by tests today; also needed by Windows interface enumeration (#8).
-    #[allow(dead_code)]
     find_all_devs: PcapFindAllDevsFn,
-    #[allow(dead_code)]
     free_all_devs: PcapFreeAllDevsFn,
     send_packet: PcapSendPacketFn,
     get_err: PcapGetErrFn,
+    datalink: PcapDatalinkFn,
 }
 
 // SAFETY: Function pointers are read-only after initialization. DLL handle is never freed.
@@ -144,6 +145,7 @@ fn get_npcap() -> Result<&'static NpcapFns, IoError> {
             let free_all_devs: PcapFreeAllDevsFn = get_proc(dll, "pcap_freealldevs")?;
             let send_packet: PcapSendPacketFn = get_proc(dll, "pcap_sendpacket")?;
             let get_err: PcapGetErrFn = get_proc(dll, "pcap_geterr")?;
+            let datalink: PcapDatalinkFn = get_proc(dll, "pcap_datalink")?;
             Some(NpcapFns {
                 dll,
                 open_live,
@@ -153,12 +155,70 @@ fn get_npcap() -> Result<&'static NpcapFns, IoError> {
                 free_all_devs,
                 send_packet,
                 get_err,
+                datalink,
             })
         })
         .as_ref()
         .ok_or_else(|| {
             IoError::Npcap("wpcap.dll not found. Install Npcap from https://npcap.com".into())
         })
+}
+
+/// A device reported by Npcap's `pcap_findalldevs`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NpcapDevice {
+    /// Npcap device name, e.g. `\Device\NPF_{GUID}`.
+    pub name: String,
+    /// Human-readable description, when Npcap provides one.
+    pub description: Option<String>,
+}
+
+/// List the devices visible to Npcap.
+///
+/// Returns `IoError::Npcap` when Npcap/wpcap.dll is not installed.
+pub fn npcap_devices() -> Result<Vec<NpcapDevice>, IoError> {
+    let npcap = get_npcap()?;
+    let mut alldevs: *mut PcapIfT = std::ptr::null_mut();
+    let mut errbuf = vec![0u8; 256];
+    let ret = unsafe { (npcap.find_all_devs)(&mut alldevs, errbuf.as_mut_ptr() as *mut c_char) };
+    if ret != 0 {
+        let msg = CStr::from_bytes_until_nul(&errbuf)
+            .ok()
+            .and_then(|s| s.to_str().ok())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("pcap_findalldevs failed");
+        return Err(IoError::Npcap(msg.to_string()));
+    }
+
+    let mut devices = Vec::new();
+    let mut cur = alldevs;
+    while !cur.is_null() {
+        let dev = unsafe { &*cur };
+        let name = if dev.name.is_null() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(dev.name) }
+                .to_string_lossy()
+                .into_owned()
+        };
+        let description = if dev.description.is_null() {
+            None
+        } else {
+            Some(
+                unsafe { CStr::from_ptr(dev.description) }
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+        };
+        if !name.is_empty() {
+            devices.push(NpcapDevice { name, description });
+        }
+        cur = dev.next;
+    }
+    unsafe {
+        (npcap.free_all_devs)(alldevs);
+    }
+    Ok(devices)
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +333,8 @@ impl NpcapReader {
         })
     }
 
-    pub fn recv(&mut self) -> Result<EthernetPacket<'_>, IoError> {
+    /// Receive raw captured bytes (link-layer header included).
+    pub fn recv_raw(&mut self) -> Result<&[u8], IoError> {
         if self.handle.is_null() {
             return Err(IoError::Npcap("capture handle is closed".into()));
         }
@@ -285,8 +346,7 @@ impl NpcapReader {
             1 => {
                 let hdr = unsafe { &*header };
                 let len = hdr.caplen as usize;
-                let packet_data = unsafe { std::slice::from_raw_parts(data, len) };
-                EthernetPacket::new(packet_data).ok_or(IoError::Parse("invalid Ethernet frame"))
+                Ok(unsafe { std::slice::from_raw_parts(data, len) })
             }
             0 => Err(IoError::Timeout),
             _ => {
@@ -294,6 +354,21 @@ impl NpcapReader {
                 Err(IoError::Npcap(format!("pcap_next_ex error: {msg}")))
             }
         }
+    }
+
+    /// Receive a single frame and parse it as Ethernet.
+    pub fn recv(&mut self) -> Result<EthernetPacket<'_>, IoError> {
+        let data = self.recv_raw()?;
+        EthernetPacket::new(data).ok_or(IoError::Parse("invalid Ethernet frame"))
+    }
+
+    /// Link-layer type reported by Npcap (`DLT_*`).
+    pub fn datalink(&self) -> Result<c_int, IoError> {
+        if self.handle.is_null() {
+            return Err(IoError::Npcap("capture handle is closed".into()));
+        }
+        let npcap = get_npcap()?;
+        Ok(unsafe { (npcap.datalink)(self.handle) })
     }
 
     /// Re-open the capture handle with new settings.
@@ -418,6 +493,12 @@ mod tests {
     }
 
     #[test]
+    fn pcap_pkt_hdr_layout_matches_windows_timeval() {
+        assert_eq!(std::mem::size_of::<TimeVal>(), 8);
+        assert_eq!(std::mem::size_of::<PcapPktHdr>(), 16);
+    }
+
+    #[test]
     fn npcap_available() {
         let _ = npcap_or_skip();
     }
@@ -471,37 +552,17 @@ mod tests {
 
     /// Find an Npcap device whose name or description contains `needle`.
     fn find_npcap_device(needle: &str) -> Option<String> {
-        let npcap = get_npcap().ok()?;
-        let mut alldevs: *mut PcapIfT = std::ptr::null_mut();
-        let mut errbuf = vec![0u8; 256];
-        let ret =
-            unsafe { (npcap.find_all_devs)(&mut alldevs, errbuf.as_mut_ptr() as *mut c_char) };
-        if ret != 0 {
-            return None;
-        }
-
-        let mut found = None;
-        let mut cur = alldevs;
-        while !cur.is_null() {
-            let dev = unsafe { &*cur };
-            let name = unsafe { CStr::from_ptr(dev.name) }.to_str().unwrap_or("");
-            let desc = if dev.description.is_null() {
-                ""
-            } else {
-                unsafe { CStr::from_ptr(dev.description) }
-                    .to_str()
-                    .unwrap_or("")
-            };
-            if name.contains(needle) || desc.contains(needle) {
-                found = Some(name.to_string());
-                break;
-            }
-            cur = dev.next;
-        }
-        unsafe {
-            (npcap.free_all_devs)(alldevs);
-        }
-        found
+        npcap_devices()
+            .ok()?
+            .into_iter()
+            .find(|device| {
+                device.name.contains(needle)
+                    || device
+                        .description
+                        .as_deref()
+                        .is_some_and(|desc| desc.contains(needle))
+            })
+            .map(|device| device.name)
     }
 
     #[test]
