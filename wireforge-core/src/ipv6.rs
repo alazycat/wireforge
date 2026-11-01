@@ -76,55 +76,31 @@ impl<'a> Ipv6Packet<'a> {
     /// Iterate over IPv6 extension headers.
     pub fn extension_headers(&self) -> Ipv6ExtensionHeadersIter<'a> {
         Ipv6ExtensionHeadersIter {
-            next_header: self.next_header(),
-            data: &self.buf[IPV6_HEADER_LEN..],
-            depth: 0,
+            cursor: ExtensionCursor::new(self),
         }
     }
 
     /// The final upper-layer protocol after skipping all extension headers.
     pub fn final_protocol(&self) -> IpProtocol {
-        let mut next = self.next_header();
-        let mut remaining = &self.buf[IPV6_HEADER_LEN..];
-        for _ in 0..MAX_EXTENSION_DEPTH {
-            if !is_extension_header(next) {
-                return next;
+        let mut cursor = ExtensionCursor::new(self);
+        loop {
+            match cursor.advance() {
+                ExtensionStep::Header { .. } => {}
+                ExtensionStep::Stop | ExtensionStep::Truncated => return cursor.next_header,
             }
-            if remaining.len() < 2 {
-                break;
-            }
-            let hdr_len = extension_header_len(next, remaining);
-            if hdr_len == 0 {
-                break;
-            }
-            next = IpProtocol::from(remaining[0]);
-            if remaining.len() < hdr_len {
-                break;
-            }
-            remaining = &remaining[hdr_len..];
         }
-        next
     }
 
     /// Payload after all extension headers.
     pub fn payload(&self) -> &'a [u8] {
-        let mut remaining = &self.buf[IPV6_HEADER_LEN..];
-        let mut next = self.next_header();
-        for _ in 0..MAX_EXTENSION_DEPTH {
-            if !is_extension_header(next) {
-                return remaining;
+        let mut cursor = ExtensionCursor::new(self);
+        loop {
+            match cursor.advance() {
+                ExtensionStep::Header { .. } => {}
+                ExtensionStep::Stop => return cursor.data,
+                ExtensionStep::Truncated => return &[],
             }
-            if remaining.len() < 2 {
-                return &[];
-            }
-            let hdr_len = extension_header_len(next, remaining);
-            if remaining.len() < hdr_len {
-                return &[];
-            }
-            next = IpProtocol::from(remaining[0]);
-            remaining = &remaining[hdr_len..];
         }
-        remaining
     }
 }
 
@@ -141,6 +117,63 @@ fn extension_header_len(proto: IpProtocol, data: &[u8]) -> usize {
     }
 }
 
+/// One step of an IPv6 extension-header chain walk.
+enum ExtensionStep<'a> {
+    /// Consumed an extension header; `data` is the full header slice.
+    Header { proto: IpProtocol, data: &'a [u8] },
+    /// The chain ended at a non-extension header (or the depth limit).
+    Stop,
+    /// The next header is truncated or malformed.
+    Truncated,
+}
+
+/// Cursor that walks the IPv6 extension-header chain.
+///
+/// [`Ipv6Packet::final_protocol`], [`Ipv6Packet::payload`], and
+/// [`Ipv6ExtensionHeadersIter`] all share this traversal, so the chain rules
+/// live in one place instead of three.
+struct ExtensionCursor<'a> {
+    next_header: IpProtocol,
+    data: &'a [u8],
+    depth: usize,
+}
+
+impl<'a> ExtensionCursor<'a> {
+    fn new(pkt: &Ipv6Packet<'a>) -> Self {
+        Self {
+            next_header: pkt.next_header(),
+            data: &pkt.buf[IPV6_HEADER_LEN..],
+            depth: 0,
+        }
+    }
+
+    /// Advance past one extension header.
+    ///
+    /// `next_header` is updated before the length check, preserving
+    /// `final_protocol`'s best-effort result for a truncated final header.
+    fn advance(&mut self) -> ExtensionStep<'a> {
+        if self.depth >= MAX_EXTENSION_DEPTH || !is_extension_header(self.next_header) {
+            return ExtensionStep::Stop;
+        }
+        if self.data.len() < 2 {
+            return ExtensionStep::Truncated;
+        }
+        let proto = self.next_header;
+        let hdr_len = extension_header_len(proto, self.data);
+        if hdr_len == 0 {
+            return ExtensionStep::Truncated;
+        }
+        self.next_header = IpProtocol::from(self.data[0]);
+        if self.data.len() < hdr_len {
+            return ExtensionStep::Truncated;
+        }
+        let hdr_data = &self.data[..hdr_len];
+        self.data = &self.data[hdr_len..];
+        self.depth += 1;
+        ExtensionStep::Header { proto, data: hdr_data }
+    }
+}
+
 /// IPv6 extension header variant.
 #[derive(Debug, Clone)]
 pub enum Ipv6ExtensionHeader<'a> {
@@ -152,36 +185,26 @@ pub enum Ipv6ExtensionHeader<'a> {
 
 /// Iterator over IPv6 extension headers.
 pub struct Ipv6ExtensionHeadersIter<'a> {
-    next_header: IpProtocol,
-    data: &'a [u8],
-    depth: usize,
+    cursor: ExtensionCursor<'a>,
 }
 
 impl<'a> Iterator for Ipv6ExtensionHeadersIter<'a> {
     type Item = Ipv6ExtensionHeader<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.depth >= MAX_EXTENSION_DEPTH || !is_extension_header(self.next_header) {
-            return None;
-        }
-        if self.data.len() < 2 {
-            return None;
-        }
+        let (proto, hdr_data) = match self.cursor.advance() {
+            ExtensionStep::Header { proto, data } => (proto, data),
+            ExtensionStep::Stop | ExtensionStep::Truncated => return None,
+        };
+        let next_header = self.cursor.next_header;
 
-        let current_next = IpProtocol::from(self.data[0]);
-        let hdr_len = extension_header_len(self.next_header, self.data);
-        if self.data.len() < hdr_len || hdr_len == 0 {
-            return None;
-        }
-
-        let hdr_data = &self.data[..hdr_len];
-        let item = match self.next_header {
+        Some(match proto {
             IpProtocol::Unknown(0) => Ipv6ExtensionHeader::HopByHop {
-                next_header: current_next,
+                next_header,
                 data: hdr_data,
             },
             IpProtocol::Unknown(43) => Ipv6ExtensionHeader::Routing {
-                next_header: current_next,
+                next_header,
                 routing_type: hdr_data[2],
                 segments_left: hdr_data[3],
                 data: hdr_data,
@@ -189,24 +212,18 @@ impl<'a> Iterator for Ipv6ExtensionHeadersIter<'a> {
             IpProtocol::Unknown(44) => {
                 let offset = read_u16be(&hdr_data[2..4]);
                 Ipv6ExtensionHeader::Fragment {
-                    next_header: current_next,
+                    next_header,
                     fragment_offset: (offset >> 3) & 0x1FFF,
                     more_fragments: offset & 0x01 != 0,
                     id: read_u32be(&hdr_data[4..8]),
                 }
             }
             IpProtocol::Unknown(60) => Ipv6ExtensionHeader::Destination {
-                next_header: current_next,
+                next_header,
                 data: hdr_data,
             },
             _ => return None,
-        };
-
-        self.next_header = current_next;
-        self.data = &self.data[hdr_len..];
-        self.depth += 1;
-
-        Some(item)
+        })
     }
 }
 
