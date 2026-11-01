@@ -77,13 +77,13 @@ impl<'a> ModbusTcpPacket<'a> {
                 starting_address: read_u16_at(data, 0),
                 quantity: read_u16_at(data, 2),
                 byte_count: data.get(4).copied().unwrap_or(0),
-                values: &data[5..],
+                values: data.get(5..).unwrap_or(&[]),
             },
             16 => ModbusFunction::WriteMultipleRegisters {
                 starting_address: read_u16_at(data, 0),
                 quantity: read_u16_at(data, 2),
                 byte_count: data.get(4).copied().unwrap_or(0),
-                values: &data[5..],
+                values: data.get(5..).unwrap_or(&[]),
             },
             _ => ModbusFunction::Unknown {
                 function_code: fc,
@@ -232,6 +232,27 @@ mod tests {
                 assert_eq!(quantity, 0);
             }
             _ => panic!("expected ReadCoils"),
+        }
+    }
+
+    #[test]
+    fn truncated_write_multiple_pdu_does_not_panic() {
+        // fc=15 with none of the address/quantity/byte-count bytes present.
+        let data = &[0x00u8, 0x01, 0x00, 0x00, 0x00, 0x02, 0x01, 0x0F];
+        let pkt = ModbusTcpPacket::new(data).unwrap();
+        match pkt.function() {
+            ModbusFunction::WriteMultipleCoils {
+                starting_address,
+                quantity,
+                byte_count,
+                values,
+            } => {
+                assert_eq!(starting_address, 0);
+                assert_eq!(quantity, 0);
+                assert_eq!(byte_count, 0);
+                assert!(values.is_empty());
+            }
+            _ => panic!("expected WriteMultipleCoils"),
         }
     }
 
