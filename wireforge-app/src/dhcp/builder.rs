@@ -1,5 +1,7 @@
 //! DHCPv4 message builder (RFC 2131/2132).
 
+use core::net::Ipv4Addr;
+
 use super::parser::DHCP_MIN_LEN;
 use super::types::DhcpOption;
 
@@ -107,64 +109,27 @@ impl DhcpPacketBuilder {
 
     pub fn add_option(mut self, opt: &DhcpOption) -> Self {
         match opt {
-            DhcpOption::SubnetMask(ip) => {
-                self.options.push(1);
-                self.options.push(4);
-                self.options.extend_from_slice(&ip.octets());
-            }
-            DhcpOption::Router(ips) => {
-                self.options.push(3);
-                self.options.push((ips.len() * 4) as u8);
-                for ip in ips {
-                    self.options.extend_from_slice(&ip.octets());
-                }
-            }
-            DhcpOption::DnsServer(ips) => {
-                self.options.push(6);
-                self.options.push((ips.len() * 4) as u8);
-                for ip in ips {
-                    self.options.extend_from_slice(&ip.octets());
-                }
-            }
-            DhcpOption::HostName(s) => {
-                self.options.push(12);
-                self.options.push(s.len() as u8);
-                self.options.extend_from_slice(s.as_bytes());
-            }
-            DhcpOption::DomainName(s) => {
-                self.options.push(15);
-                self.options.push(s.len() as u8);
-                self.options.extend_from_slice(s.as_bytes());
-            }
-            DhcpOption::BroadcastAddr(ip) => {
-                self.options.push(28);
-                self.options.push(4);
-                self.options.extend_from_slice(&ip.octets());
-            }
-            DhcpOption::RequestedIp(ip) => {
-                self.options.push(50);
-                self.options.push(4);
-                self.options.extend_from_slice(&ip.octets());
-            }
-            DhcpOption::LeaseTime(t) => {
-                self.options.push(51);
-                self.options.push(4);
-                self.options.extend_from_slice(&t.to_be_bytes());
-            }
-            DhcpOption::ServerId(ip) => {
-                self.options.push(54);
-                self.options.push(4);
-                self.options.extend_from_slice(&ip.octets());
-            }
-            DhcpOption::ParameterList(params) => {
-                self.options.push(55);
-                self.options.push(params.len() as u8);
-                self.options.extend_from_slice(params);
-            }
+            DhcpOption::SubnetMask(ip) => self.push_option(1, &ip.octets()),
+            DhcpOption::Router(ips) => self.push_option(3, &encode_ipv4_list(ips)),
+            DhcpOption::DnsServer(ips) => self.push_option(6, &encode_ipv4_list(ips)),
+            DhcpOption::HostName(s) => self.push_option(12, s.as_bytes()),
+            DhcpOption::DomainName(s) => self.push_option(15, s.as_bytes()),
+            DhcpOption::BroadcastAddr(ip) => self.push_option(28, &ip.octets()),
+            DhcpOption::RequestedIp(ip) => self.push_option(50, &ip.octets()),
+            DhcpOption::LeaseTime(t) => self.push_option(51, &t.to_be_bytes()),
+            DhcpOption::ServerId(ip) => self.push_option(54, &ip.octets()),
+            DhcpOption::ParameterList(params) => self.push_option(55, params),
             DhcpOption::End => {}
             _ => {}
         }
         self
+    }
+
+    /// Append a code/length/value option.
+    fn push_option(&mut self, code: u8, data: &[u8]) {
+        self.options.push(code);
+        self.options.push(data.len() as u8);
+        self.options.extend_from_slice(data);
     }
 
     pub fn build(mut self) -> Vec<u8> {
@@ -172,4 +137,9 @@ impl DhcpPacketBuilder {
         self.buf.extend_from_slice(&self.options);
         self.buf
     }
+}
+
+/// Encode a list of IPv4 addresses as consecutive 4-byte octets.
+fn encode_ipv4_list(ips: &[Ipv4Addr]) -> Vec<u8> {
+    ips.iter().flat_map(|ip| ip.octets()).collect()
 }
