@@ -141,6 +141,239 @@ impl<'a> Ipv4Packet<'a> {
     pub fn verify_checksum(&self) -> bool {
         internet_checksum(&self.buf[..self.header_length()]) == 0
     }
+
+    /// Iterate over the typed IP options in the header.
+    pub fn options_iter(&self) -> Ipv4OptionsIter<'a> {
+        Ipv4OptionsIter::new(self.options())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IP options
+// ---------------------------------------------------------------------------
+
+/// IPv4 option type numbers.
+mod opt {
+    pub const END: u8 = 0;
+    pub const NOP: u8 = 1;
+    pub const RECORD_ROUTE: u8 = 7;
+    pub const TIMESTAMP: u8 = 68;
+    pub const SECURITY: u8 = 130;
+    pub const LSR: u8 = 131;
+    pub const SSR: u8 = 137;
+    pub const ROUTER_ALERT: u8 = 148;
+}
+
+/// A typed IPv4 option.
+///
+/// The borrowed variants reference the option payload (everything after the
+/// kind/length bytes) in the source buffer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ipv4Option<'a> {
+    /// Option type 0 — terminates the option list.
+    EndOfOptions,
+    /// Option type 1 — no operation (padding).
+    NoOperation,
+    /// Option type 7 — record route.
+    RecordRoute {
+        /// Byte offset (starting at 4) of the next free route slot.
+        pointer: u8,
+        /// Route area; recorded hops occupy whole 4-byte slots.
+        route: &'a [u8],
+    },
+    /// Option type 68 — internet timestamp.
+    Timestamp {
+        /// Byte offset (starting at 5) of the next free timestamp slot.
+        pointer: u8,
+        /// Number of overflowed slots (0–15).
+        overflow: u8,
+        /// Timestamp format flags (0–15).
+        flags: u8,
+        /// Timestamp area (raw, format depends on `flags`).
+        data: &'a [u8],
+    },
+    /// Option type 130 — security.
+    Security {
+        security: u16,
+        compartments: u16,
+        handling: u16,
+        tcc: u16,
+    },
+    /// Option type 131 — loose source route.
+    LooseSourceRoute {
+        pointer: u8,
+        route: &'a [u8],
+    },
+    /// Option type 137 — strict source route.
+    StrictSourceRoute {
+        pointer: u8,
+        route: &'a [u8],
+    },
+    /// Option type 148 — router alert (RFC 2113).
+    RouterAlert,
+    /// Any other or malformed option.
+    Unknown {
+        kind: u8,
+        data: &'a [u8],
+    },
+}
+
+impl Ipv4Option<'_> {
+    /// Number of bytes this option occupies on the wire.
+    pub fn encoded_len(&self) -> usize {
+        match self {
+            Self::EndOfOptions => 1,
+            Self::NoOperation => 1,
+            Self::RecordRoute { route, .. }
+            | Self::LooseSourceRoute { route, .. }
+            | Self::StrictSourceRoute { route, .. } => 3 + route.len(),
+            Self::Timestamp { data, .. } => 4 + data.len(),
+            Self::Security { .. } => 11,
+            Self::RouterAlert => 4,
+            Self::Unknown { data, .. } => 2 + data.len(),
+        }
+    }
+
+    /// Append the wire encoding of this option to `out`.
+    ///
+    /// Returns an error if a route area is not a multiple of 4 bytes.
+    pub fn encode_into(&self, out: &mut Vec<u8>) -> Result<(), BuildError> {
+        match self {
+            Self::EndOfOptions => out.push(opt::END),
+            Self::NoOperation => out.push(opt::NOP),
+            Self::RecordRoute { pointer, route }
+            | Self::LooseSourceRoute { pointer, route }
+            | Self::StrictSourceRoute { pointer, route } => {
+                let kind = match self {
+                    Self::RecordRoute { .. } => opt::RECORD_ROUTE,
+                    Self::LooseSourceRoute { .. } => opt::LSR,
+                    _ => opt::SSR,
+                };
+                if !route.len().is_multiple_of(4) {
+                    return Err(BuildError::InvalidField {
+                        field: "options",
+                        reason: "route area must be a multiple of 4 bytes",
+                    });
+                }
+                out.push(kind);
+                out.push(3 + route.len() as u8);
+                out.push(*pointer);
+                out.extend_from_slice(route);
+            }
+            Self::Timestamp {
+                pointer,
+                overflow,
+                flags,
+                data,
+            } => {
+                out.push(opt::TIMESTAMP);
+                out.push(4 + data.len() as u8);
+                out.push(*pointer);
+                out.push((*overflow & 0x0F) << 4 | (*flags & 0x0F));
+                out.extend_from_slice(data);
+            }
+            Self::Security {
+                security,
+                compartments,
+                handling,
+                tcc,
+            } => {
+                out.push(opt::SECURITY);
+                out.push(11);
+                out.extend_from_slice(&security.to_be_bytes());
+                out.extend_from_slice(&compartments.to_be_bytes());
+                out.extend_from_slice(&handling.to_be_bytes());
+                out.extend_from_slice(&tcc.to_be_bytes());
+                out.push(0); // padding
+            }
+            Self::RouterAlert => {
+                out.push(opt::ROUTER_ALERT);
+                out.push(4);
+                out.extend_from_slice(&0u16.to_be_bytes());
+            }
+            Self::Unknown { kind, data } => {
+                out.push(*kind);
+                out.push(2 + data.len() as u8);
+                out.extend_from_slice(data);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Iterator over the typed IP options in an IPv4 header.
+#[derive(Debug, Clone)]
+pub struct Ipv4OptionsIter<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> Ipv4OptionsIter<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data }
+    }
+}
+
+impl<'a> Iterator for Ipv4OptionsIter<'a> {
+    type Item = Ipv4Option<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (&kind, rest) = self.data.split_first()?;
+        match kind {
+            opt::END => {
+                self.data = &[];
+                Some(Ipv4Option::EndOfOptions)
+            }
+            opt::NOP => {
+                self.data = rest;
+                Some(Ipv4Option::NoOperation)
+            }
+            _ => {
+                let len = match rest.first() {
+                    Some(&len) if len >= 2 && len as usize <= rest.len() => len as usize,
+                    // Malformed option: report everything remaining as unknown.
+                    _ => {
+                        let data = self.data;
+                        self.data = &[];
+                        return Some(Ipv4Option::Unknown { kind, data });
+                    }
+                };
+                let body = &self.data[2..len];
+                self.data = &self.data[len..];
+                let option = match kind {
+                    opt::RECORD_ROUTE => Ipv4Option::RecordRoute {
+                        pointer: body.first().copied().unwrap_or(0),
+                        route: body.get(1..).unwrap_or(&[]),
+                    },
+                    opt::TIMESTAMP => Ipv4Option::Timestamp {
+                        pointer: body.first().copied().unwrap_or(0),
+                        overflow: body.get(1).copied().unwrap_or(0) >> 4,
+                        flags: body.get(1).copied().unwrap_or(0) & 0x0F,
+                        data: body.get(2..).unwrap_or(&[]),
+                    },
+                    opt::SECURITY if len >= 11 => Ipv4Option::Security {
+                        security: read_u16be(&body[1..3]),
+                        compartments: read_u16be(&body[3..5]),
+                        handling: read_u16be(&body[5..7]),
+                        tcc: read_u16be(&body[7..9]),
+                    },
+                    opt::LSR => Ipv4Option::LooseSourceRoute {
+                        pointer: body.first().copied().unwrap_or(0),
+                        route: body.get(1..).unwrap_or(&[]),
+                    },
+                    opt::SSR => Ipv4Option::StrictSourceRoute {
+                        pointer: body.first().copied().unwrap_or(0),
+                        route: body.get(1..).unwrap_or(&[]),
+                    },
+                    opt::ROUTER_ALERT => Ipv4Option::RouterAlert,
+                    _ => Ipv4Option::Unknown {
+                        kind,
+                        data: body,
+                    },
+                };
+                Some(option)
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,8 +384,12 @@ impl<'a> Ipv4Packet<'a> {
 #[derive(Debug, Clone)]
 pub struct Ipv4PacketBuilder {
     buf: Vec<u8>,
+    options: Vec<u8>,
     payload: Option<Vec<u8>>,
 }
+
+/// Maximum IP options length in bytes (IHL max 15 → 60 − 20).
+pub const IPV4_MAX_OPTIONS_LEN: usize = 40;
 
 impl Default for Ipv4PacketBuilder {
     fn default() -> Self {
@@ -166,7 +403,11 @@ impl Ipv4PacketBuilder {
         let mut buf = vec![0u8; IPV4_MIN_HEADER_LEN];
         buf[0] = 0x45; // version=4, IHL=5
         buf[8] = 64; // TTL=64
-        Self { buf, payload: None }
+        Self {
+            buf,
+            options: Vec::new(),
+            payload: None,
+        }
     }
 
     pub fn dscp(mut self, dscp: u8) -> Self {
@@ -229,6 +470,72 @@ impl Ipv4PacketBuilder {
         self
     }
 
+    /// Set raw IPv4 options (kind/length/value format), replacing any
+    /// previously configured options.
+    ///
+    /// The options are validated as a TLV stream and padded to a 4-byte
+    /// boundary with End-of-Options (0x00) when built. IHL, total length and
+    /// the header checksum are computed automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError`] if the options exceed 40 bytes or contain a
+    /// truncated/invalid option.
+    pub fn options(mut self, data: &[u8]) -> Result<Self, BuildError> {
+        validate_options(data)?;
+        if self.options.len() + data.len() > IPV4_MAX_OPTIONS_LEN {
+            return Err(BuildError::PayloadTooLarge {
+                max: IPV4_MAX_OPTIONS_LEN,
+                actual: self.options.len() + data.len(),
+            });
+        }
+        self.options.clear();
+        self.options.extend_from_slice(data);
+        Ok(self)
+    }
+
+    /// Append a typed IPv4 option.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError`] if the option cannot be encoded (e.g. a route
+    /// area that is not a multiple of 4) or if the total options exceed 40 bytes.
+    pub fn add_option(mut self, option: &Ipv4Option<'_>) -> Result<Self, BuildError> {
+        if self.options.len() + option.encoded_len() > IPV4_MAX_OPTIONS_LEN {
+            return Err(BuildError::PayloadTooLarge {
+                max: IPV4_MAX_OPTIONS_LEN,
+                actual: self.options.len() + option.encoded_len(),
+            });
+        }
+        option.encode_into(&mut self.options)?;
+        Ok(self)
+    }
+
+    /// Convenience: append a Router Alert option (RFC 2113).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError`] if the total options exceed 40 bytes.
+    pub fn router_alert(self) -> Result<Self, BuildError> {
+        self.add_option(&Ipv4Option::RouterAlert)
+    }
+
+    /// Convenience: append a Record Route option.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError`] if `route` is not a multiple of 4 bytes or the
+    /// total options exceed 40 bytes.
+    pub fn record_route(self, pointer: u8, route: &[u8]) -> Result<Self, BuildError> {
+        if !route.len().is_multiple_of(4) {
+            return Err(BuildError::InvalidField {
+                field: "options",
+                reason: "route area must be a multiple of 4 bytes",
+            });
+        }
+        self.add_option(&Ipv4Option::RecordRoute { pointer, route })
+    }
+
     pub fn payload(mut self, data: &[u8]) -> Result<Self, BuildError> {
         if data.len() > 65535 - self.buf.len() {
             return Err(BuildError::PayloadTooLarge {
@@ -250,9 +557,18 @@ impl PacketBuilder for Ipv4PacketBuilder {
     type Output = Vec<u8>;
 
     fn build(mut self) -> Vec<u8> {
-        let total_len = self.buf.len() + self.payload.as_ref().map_or(0, |p| p.len());
+        // Pad options to a 4-byte boundary with End-of-Options and update IHL.
+        while !self.options.len().is_multiple_of(4) {
+            self.options.push(opt::END);
+        }
+        let header_len = IPV4_MIN_HEADER_LEN + self.options.len();
+        self.buf[0] = 0x40 | (header_len / 4) as u8;
+
+        let total_len = header_len + self.payload.as_ref().map_or(0, |p| p.len());
         write_u16be(&mut self.buf[2..4], total_len as u16);
 
+        // Checksum covers the full header including options.
+        self.buf.extend_from_slice(&self.options);
         seal_internet_checksum(&mut self.buf, 10);
 
         let mut packet = self.buf;
@@ -261,6 +577,42 @@ impl PacketBuilder for Ipv4PacketBuilder {
         }
         packet
     }
+}
+
+/// Validate a raw IPv4 options TLV stream.
+fn validate_options(data: &[u8]) -> Result<(), BuildError> {
+    let mut rest = data;
+    while !rest.is_empty() {
+        let kind = rest[0];
+        if kind == opt::END {
+            break; // everything after EOL is padding
+        }
+        if kind == opt::NOP {
+            rest = &rest[1..];
+            continue;
+        }
+        let len = rest
+            .get(1)
+            .copied()
+            .ok_or(BuildError::InvalidField {
+                field: "options",
+                reason: "truncated option header",
+            })? as usize;
+        if len < 2 {
+            return Err(BuildError::InvalidField {
+                field: "options",
+                reason: "option length must be at least 2",
+            });
+        }
+        if len > rest.len() {
+            return Err(BuildError::InvalidField {
+                field: "options",
+                reason: "option length exceeds available bytes",
+            });
+        }
+        rest = &rest[len..];
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -353,6 +705,197 @@ mod tests {
         assert_eq!(pkt.header_length(), 24);
         assert_eq!(pkt.options(), &[0x01, 0x02, 0x03, 0x04]);
         assert_eq!(pkt.payload(), &[0xAA, 0xBB]);
+        assert!(pkt.verify_checksum());
+    }
+
+    #[test]
+    fn build_with_router_alert() {
+        let pkt_bytes = Ipv4PacketBuilder::new()
+            .source(Ipv4Addr::new(10, 0, 0, 1))
+            .destination(Ipv4Addr::new(10, 0, 0, 2))
+            .protocol(IpProtocol::Udp)
+            .router_alert()
+            .unwrap()
+            .payload(&[0xDE, 0xAD])
+            .unwrap()
+            .build();
+
+        let pkt = Ipv4Packet::new(&pkt_bytes).unwrap();
+        assert_eq!(pkt.ihl(), 6);
+        assert_eq!(pkt.header_length(), 24);
+        assert_eq!(pkt.options(), &[0x94, 0x04, 0x00, 0x00]);
+        assert_eq!(pkt.payload(), &[0xDE, 0xAD]);
+        assert!(pkt.verify_checksum());
+    }
+
+    #[test]
+    fn build_with_raw_options() {
+        let pkt_bytes = Ipv4PacketBuilder::new()
+            .source(Ipv4Addr::new(10, 0, 0, 1))
+            .destination(Ipv4Addr::new(10, 0, 0, 2))
+            .protocol(IpProtocol::Tcp)
+            // 3-byte option stream: NOP, NOP, NOP → padded to 4 with EOL
+            .options(&[0x01, 0x01, 0x01])
+            .unwrap()
+            .build();
+
+        let pkt = Ipv4Packet::new(&pkt_bytes).unwrap();
+        assert_eq!(pkt.ihl(), 6);
+        assert_eq!(pkt.options(), &[0x01, 0x01, 0x01, 0x00]);
+        assert!(pkt.verify_checksum());
+
+        let opts: Vec<_> = pkt.options_iter().collect();
+        assert_eq!(
+            opts,
+            vec![
+                Ipv4Option::NoOperation,
+                Ipv4Option::NoOperation,
+                Ipv4Option::NoOperation,
+                Ipv4Option::EndOfOptions,
+            ]
+        );
+    }
+
+    #[test]
+    fn build_with_record_route() {
+        let route = [10, 0, 0, 1, 10, 0, 0, 2];
+        let pkt_bytes = Ipv4PacketBuilder::new()
+            .source(Ipv4Addr::new(10, 0, 0, 1))
+            .destination(Ipv4Addr::new(10, 0, 0, 3))
+            .protocol(IpProtocol::Udp)
+            .record_route(4, &route)
+            .unwrap()
+            .build();
+
+        let pkt = Ipv4Packet::new(&pkt_bytes).unwrap();
+        // 11 bytes of options → padded to 12 → IHL=8
+        assert_eq!(pkt.ihl(), 8);
+        assert_eq!(pkt.options()[0], 7); // Record Route kind
+        assert_eq!(pkt.options()[1], 11); // length
+        assert!(pkt.verify_checksum());
+
+        let opts: Vec<_> = pkt.options_iter().collect();
+        // trailing EndOfOptions is the padding byte
+        assert_eq!(
+            opts,
+            vec![
+                Ipv4Option::RecordRoute {
+                    pointer: 4,
+                    route: &route,
+                },
+                Ipv4Option::EndOfOptions,
+            ]
+        );
+    }
+
+    #[test]
+    fn options_typed_roundtrip() {
+        let route = [0u8; 4];
+        let pkt_bytes = Ipv4PacketBuilder::new()
+            .source(Ipv4Addr::new(10, 0, 0, 1))
+            .destination(Ipv4Addr::new(10, 0, 0, 2))
+            .protocol(IpProtocol::Udp)
+            .add_option(&Ipv4Option::RouterAlert)
+            .unwrap()
+            .add_option(&Ipv4Option::Timestamp {
+                pointer: 5,
+                overflow: 0,
+                flags: 1,
+                data: &[0u8, 0, 0, 42],
+            })
+            .unwrap()
+            .add_option(&Ipv4Option::StrictSourceRoute { pointer: 4, route: &route })
+            .unwrap()
+            .build();
+
+        let pkt = Ipv4Packet::new(&pkt_bytes).unwrap();
+        // 4 + 8 + 7 = 19 bytes of options → padded to 20 → IHL=10
+        assert_eq!(pkt.ihl(), 10);
+        assert!(pkt.verify_checksum());
+
+        let opts: Vec<_> = pkt.options_iter().collect();
+        // trailing EndOfOptions is the padding byte
+        assert_eq!(opts.len(), 4);
+        assert_eq!(opts[0], Ipv4Option::RouterAlert);
+        assert_eq!(
+            opts[1],
+            Ipv4Option::Timestamp {
+                pointer: 5,
+                overflow: 0,
+                flags: 1,
+                data: &[0u8, 0, 0, 42],
+            }
+        );
+        assert_eq!(
+            opts[2],
+            Ipv4Option::StrictSourceRoute { pointer: 4, route: &route }
+        );
+    }
+
+    #[test]
+    fn options_reject_too_long() {
+        let err = Ipv4PacketBuilder::new()
+            .options(&[0x01; 41])
+            .unwrap_err();
+        assert!(matches!(err, BuildError::PayloadTooLarge { max: 40, actual: 41 }));
+    }
+
+    #[test]
+    fn options_reject_truncated_tlv() {
+        // kind=7 (Record Route) claims length 8 but only 1 byte follows
+        let err = Ipv4PacketBuilder::new()
+            .options(&[0x07, 0x08, 0x00])
+            .unwrap_err();
+        assert!(matches!(err, BuildError::InvalidField { field: "options", .. }));
+    }
+
+    #[test]
+    fn options_reject_bad_route_alignment() {
+        let err = Ipv4PacketBuilder::new()
+            .record_route(4, &[0u8; 3])
+            .unwrap_err();
+        assert!(matches!(err, BuildError::InvalidField { field: "options", .. }));
+    }
+
+    #[test]
+    fn parse_malformed_option_is_unknown() {
+        // kind=99, length=8, but only 4 bytes of options present (IHL=6)
+        let mut data = vec![0x46u8, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00, 0x40, 0x06, 0x00, 0x00,
+            0xC0, 0xA8, 0x01, 0x01, 0xC0, 0xA8, 0x01, 0x02,
+            99, 8, 1, 2];
+        let csum = internet_checksum(&data[..24]);
+        data[10..12].copy_from_slice(&csum.to_be_bytes());
+
+        let pkt = Ipv4Packet::new(&data).unwrap();
+        let opts: Vec<_> = pkt.options_iter().collect();
+        assert_eq!(
+            opts,
+            vec![Ipv4Option::Unknown {
+                kind: 99,
+                data: &[99u8, 8, 1, 2],
+            }]
+        );
+    }
+
+    #[test]
+    fn mutable_packet_options_accessors() {
+        let mut pkt_bytes = Ipv4PacketBuilder::new()
+            .source(Ipv4Addr::new(10, 0, 0, 1))
+            .destination(Ipv4Addr::new(10, 0, 0, 2))
+            .protocol(IpProtocol::Udp)
+            .router_alert()
+            .unwrap()
+            .build();
+
+        {
+            let mut pkt = MutableIpv4Packet::new(&mut pkt_bytes).unwrap();
+            assert_eq!(pkt.options(), &[0x94, 0x04, 0x00, 0x00]);
+            pkt.options_mut()[2..4].copy_from_slice(&0x1234u16.to_be_bytes());
+            pkt.update_checksum();
+        }
+
+        let pkt = Ipv4Packet::new(&pkt_bytes).unwrap();
+        assert_eq!(pkt.options(), &[0x94, 0x04, 0x12, 0x34]);
         assert!(pkt.verify_checksum());
     }
 }
@@ -500,6 +1043,17 @@ impl<'a> MutableIpv4Packet<'a> {
     /// Set the destination address.
     pub fn set_destination(&mut self, destination: Ipv4Addr) {
         self.buf[16..20].copy_from_slice(&destination.octets());
+    }
+
+    /// Raw IP options bytes.
+    pub fn options(&self) -> &[u8] {
+        self.view().options()
+    }
+
+    /// Mutable raw IP options bytes (the header length stays unchanged).
+    pub fn options_mut(&mut self) -> &mut [u8] {
+        let hdr_len = self.view().header_length();
+        &mut self.buf[IPV4_MIN_HEADER_LEN..hdr_len]
     }
 
     /// Recompute the IPv4 header checksum in place.
