@@ -10,8 +10,13 @@
 > SLL/SLL2（#16）、VXLAN（#17）、flowcontrol/USBPcap（#18）。
 > P1 §1/§2 关于"没有 `MutablePacket` / 公共 `Packet` trait"的结论已过时——
 > `wireforge-core::packet` 现提供 `Packet`/`MutablePacket`/`PacketSize`/`FromPacket`。
-> 其余结论（macOS 空壳、Windows L2 发送缺失、`pnet_macros`/`pnet_transport`
-> 无对应物）仍然有效。
+>
+> **状态更新（2026-11-01，Issue #13/#14）**：`pnet_macros` 现有轻量等价物
+> `wireforge_core::define_protocol!`（声明式固定头协议宏，覆盖 u8/u16/u32、
+> 定长字节串与 payload；不含 proc-macro/变长头/校验和自动生成）；
+> `pnet_transport` 现有等价物 `wireforge_io::transport`
+> （`transport_channel` + 类型化迭代器 + TTL/ECN + `next_with_timeout`）。
+> 其余仍然有效的结论：macOS 空壳、Windows L2 发送缺失。
 
 ## 结论
 

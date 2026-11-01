@@ -5,11 +5,12 @@ building for common network protocols, with cross-platform capture I/O
 and pcap/pcapng file support.
 
 > **Status vs libpnet:** WireForge covers the packet-parsing subset of
-> libpnet plus a much deeper application layer and pcap file I/O, but it
-> is **not yet** a complete replacement: platform I/O is only fully
-> functional on Linux, and libpnet's `MutablePacket`/`pnet_macros`
-> abstractions have no equivalent here. See
-> **[libpnet parity gap analysis](docs/libpnet-parity-gap-analysis.md)**
+> libpnet — plus a lightweight `define_protocol!` macro for custom
+> protocols, a `pnet_transport`-style channel API, a much deeper
+> application layer, and pcap file I/O — but it is **not yet** a complete
+> replacement: platform I/O is only fully functional on Linux, and
+> libpnet's per-field `Mutable*Packet` setters have no equivalent here.
+> See **[libpnet parity gap analysis](docs/libpnet-parity-gap-analysis.md)**
 > for an honest, module-by-module comparison.
 
 [![CI](https://github.com/wireforge/wireforge/actions/workflows/ci.yml/badge.svg)](https://github.com/wireforge/wireforge/actions/workflows/ci.yml)
@@ -78,8 +79,10 @@ if let Some(pkt) = parse_udp_application(udp_payload, src_port, 5353) {
 | Tunnel / capture formats | VXLAN, USBPcap headers | wireforge-core |
 | L3 | IPv4 (+ options), IPv6 (+ ext headers), ICMP/ICMPv6/NDP, IGMP, GRE | wireforge-core |
 | L4 | TCP (+ options), UDP | wireforge-core |
+| Custom protocols | `define_protocol!` declarative macro (parser + builder + `Packet` trait) | wireforge-core |
 | App | DNS, DHCP, NTP, HTTP/1.1, TLS ClientHello, SSH, MQTT, Modbus TCP, RADIUS, mDNS, LLMNR, NetBIOS-NS, SMB2 Negotiate, RDP | wireforge-app |
 | I/O | pcap/pcapng read/write | wireforge-app |
+| Transport I/O | `pnet_transport`-style channel API (TCP/UDP/ICMP raw sockets, TTL/ECN, timeouts) | wireforge-io |
 
 ## Platform Support
 

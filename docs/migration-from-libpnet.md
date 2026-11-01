@@ -193,13 +193,15 @@ println!("sent {} bytes", n);
 | Fuzz testing | Yes (6 fuzz targets in `fuzz/fuzzers/`) | Yes (13 fuzz targets) |
 | Extension headers | IPv6 HopByHop/Routing/Fragment/Destination | IPv6 ext-header chain + depth limit + typed iterator |
 | Packet trait family | `Packet`/`MutablePacket`/`PacketSize` | `wireforge_core::Packet`/`MutablePacket`/`PacketSize` (subset) |
-| `pnet_macros` derive | Yes | No equivalent |
+| `pnet_macros` derive | Yes | Lightweight `define_protocol!` macro (fixed-header protocols; no proc-macro) |
+| `pnet_transport` | `transport_channel` + `TransportSender`/`TransportReceiver` | `wireforge_io::transport` (same shape: typed iterators, TTL/ECN, `next_with_timeout`) |
 
 > WireForge now covers all of libpnet 0.35's `pnet_packet` modules
 > (including `sll`, `sll2`, `vxlan`, `flowcontrol`, `usbpcap`) and
-> additionally ships IGMP, which libpnet does not have. The remaining
-> gaps are in datalink I/O platform coverage and `pnet_macros`, not in
-> protocol parsing — see the
+> additionally ships IGMP, which libpnet does not have. The
+> `pnet_macros` and `pnet_transport` layers have lightweight equivalents
+> (`define_protocol!` and `wireforge_io::transport`). The remaining gap
+> is datalink I/O platform coverage — see the
 > [libpnet parity gap analysis](libpnet-parity-gap-analysis.md).
 
 ### WireForge Advantages
