@@ -161,13 +161,15 @@ fn skip_questions(buf: &[u8], mut pos: usize, count: usize) -> usize {
 /// Walk past `count` resource record entries starting at `pos`. Returns new position.
 fn skip_records(buf: &[u8], mut pos: usize, count: usize) -> usize {
     for _ in 0..count {
-        if let Some((_, next)) = parse_name(buf, pos) {
-            pos = next + 10; // TYPE(2)+CLASS(2)+TTL(4)+RDLEN(2)
-            if pos >= 2 {
-                let rdlen = read_u16be(&buf[pos - 2..pos]) as usize;
-                pos += rdlen;
-            }
+        let Some((_, next)) = parse_name(buf, pos) else {
+            break;
+        };
+        let header_end = next + 10; // TYPE(2)+CLASS(2)+TTL(4)+RDLEN(2)
+        if header_end > buf.len() {
+            break;
         }
+        let rdlen = read_u16be(&buf[header_end - 2..header_end]) as usize;
+        pos = header_end.saturating_add(rdlen);
     }
     pos
 }
@@ -739,6 +741,19 @@ mod tests {
             }
             other => panic!("expected SOA record, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn truncated_record_header_does_not_panic() {
+        // Header claims one answer, but only the root-name terminator follows.
+        let mut data = vec![0u8; DNS_HEADER_LEN];
+        data[6] = 0;
+        data[7] = 1; // ANCOUNT = 1
+        data.push(0); // empty owner name
+
+        let pkt = DnsPacket::new(&data).unwrap();
+        assert_eq!(pkt.answers_count(), 1);
+        assert_eq!(pkt.answers().count(), 0);
     }
 
     #[test]
