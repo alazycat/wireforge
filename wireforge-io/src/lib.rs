@@ -39,10 +39,15 @@ pub mod macos;
 pub mod windows;
 
 mod interface;
+pub mod transport;
 
 pub use config::{Config, FanoutOption, FanoutType};
 pub use error::IoError;
 pub use interface::{list_interfaces, Interface, IpNetwork};
+pub use transport::{
+    transport_channel, IcmpPacketView, TcpPacketView, TransportChannelType, TransportPacket,
+    TransportReceiver, TransportSender, UdpPacketView,
+};
 
 // Re-export existing concrete types from their new platform homes
 #[cfg(target_os = "linux")]
