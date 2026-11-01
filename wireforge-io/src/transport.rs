@@ -88,9 +88,7 @@ pub fn transport_channel(
     buffer_size: usize,
     channel_type: TransportChannelType,
 ) -> Result<(TransportSender, TransportReceiver), IoError> {
-    let protocol = match channel_type {
-        TransportChannelType::Layer4(p) => p,
-    };
+    let TransportChannelType::Layer4(protocol) = channel_type;
     let proto = Protocol::from(i32::from(u8::from(protocol)));
     let rx = Socket::new(Domain::IPV4, Type::RAW, Some(proto))?;
     // Windows requires binding raw sockets before receiving; binding to
@@ -218,6 +216,8 @@ pub struct TransportReceiver {
 impl TransportReceiver {
     /// Receive the next matching datagram (blocks until one arrives or the
     /// configured timeout, if any, expires).
+    // Named `next` for parity with libpnet's `TransportReceiver::next`.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<TransportPacket, IoError> {
         let data = self.fill()?;
         Ok(TransportPacket {
