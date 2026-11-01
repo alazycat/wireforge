@@ -69,7 +69,10 @@ impl<R: Read> Iterator for PcapReader<R> {
         if let Err(e) = self.reader.read_exact(&mut data) {
             return Some(Err(e));
         }
-        Some(Ok((Duration::new(ts_sec as u64, ts_usec * 1000), data)))
+        Some(Ok((
+            Duration::new(ts_sec as u64, 0) + Duration::from_micros(ts_usec as u64),
+            data,
+        )))
     }
 }
 
@@ -160,6 +163,21 @@ mod tests {
         assert_eq!(reader.header().network, 1);
         let results: Vec<_> = reader.collect();
         assert_eq!(results[0].as_ref().unwrap().1, &[0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn read_pcap_large_microsecond_timestamp_does_not_overflow() {
+        let mut data = make_pcap_file(&[]);
+        data.extend_from_slice(&0u32.to_be_bytes()); // ts_sec
+        data.extend_from_slice(&5_000_000u32.to_be_bytes()); // ts_usec
+        data.extend_from_slice(&1u32.to_be_bytes()); // incl_len
+        data.extend_from_slice(&1u32.to_be_bytes()); // orig_len
+        data.push(0xAA);
+
+        let reader = PcapReader::from_bytes(data).unwrap();
+        let results: Vec<_> = reader.collect();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_ok());
     }
 
     #[test]
