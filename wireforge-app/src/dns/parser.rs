@@ -505,6 +505,7 @@ fn parse_soa_rdata(
 mod tests {
     use super::*;
     use crate::dns::builder::DnsPacketBuilder;
+    use crate::dns::name::encode_name;
     use crate::dns::types::DnsClass;
 
     // A minimal DNS query: id=0x1234, 1 question (example.com A)
@@ -567,5 +568,274 @@ mod tests {
             }
             _ => panic!("expected A record"),
         }
+    }
+
+    /// Build a response containing one answer with the given RDATA.
+    fn parse_single_answer(qtype: DnsType, ttl: u32, rdata: &[u8]) -> DnsRecord {
+        let data = DnsPacketBuilder::response()
+            .add_raw_answer("owner.example.com", qtype, ttl, rdata)
+            .build();
+        let pkt = DnsPacket::new(&data).unwrap();
+        let answers: Vec<_> = pkt.answers().collect();
+        assert_eq!(answers.len(), 1, "expected exactly one answer");
+        answers.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn parse_aaaa_record() {
+        let rdata = [
+            0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        ];
+        match parse_single_answer(DnsType::AAAA, 60, &rdata) {
+            DnsRecord::AAAA { name, ttl, addr } => {
+                assert_eq!(name, "owner.example.com");
+                assert_eq!(ttl, 60);
+                assert_eq!(addr, Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1));
+            }
+            other => panic!("expected AAAA record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_cname_record() {
+        let rdata = encode_name("target.example.com");
+        match parse_single_answer(DnsType::CNAME, 120, &rdata) {
+            DnsRecord::CNAME { name, ttl, cname } => {
+                assert_eq!(name, "owner.example.com");
+                assert_eq!(ttl, 120);
+                assert_eq!(cname, "target.example.com");
+            }
+            other => panic!("expected CNAME record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_cname_compressed_rdata() {
+        // CNAME RDATA is a pointer to the question name at offset 12.
+        let data = DnsPacketBuilder::response()
+            .add_question("www.example.com", DnsType::CNAME, DnsClass::IN)
+            .add_raw_answer("www.example.com", DnsType::CNAME, 60, &[0xC0, 0x0C])
+            .build();
+        let pkt = DnsPacket::new(&data).unwrap();
+        let answers: Vec<_> = pkt.answers().collect();
+        match &answers[0] {
+            DnsRecord::CNAME { cname, .. } => assert_eq!(cname, "www.example.com"),
+            other => panic!("expected CNAME record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_mx_record() {
+        let mut rdata = 10u16.to_be_bytes().to_vec();
+        rdata.extend_from_slice(&encode_name("mail.example.com"));
+        match parse_single_answer(DnsType::MX, 300, &rdata) {
+            DnsRecord::MX {
+                name,
+                ttl,
+                preference,
+                exchange,
+            } => {
+                assert_eq!(name, "owner.example.com");
+                assert_eq!(ttl, 300);
+                assert_eq!(preference, 10);
+                assert_eq!(exchange, "mail.example.com");
+            }
+            other => panic!("expected MX record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_ns_and_ptr_records() {
+        let rdata = encode_name("ns1.example.com");
+        match parse_single_answer(DnsType::NS, 60, &rdata) {
+            DnsRecord::NS {
+                name,
+                ttl,
+                nsdname,
+            } => {
+                assert_eq!(name, "owner.example.com");
+                assert_eq!(ttl, 60);
+                assert_eq!(nsdname, "ns1.example.com");
+            }
+            other => panic!("expected NS record, got {other:?}"),
+        }
+
+        let rdata = encode_name("host.example.com");
+        match parse_single_answer(DnsType::PTR, 60, &rdata) {
+            DnsRecord::PTR {
+                name,
+                ttl,
+                ptrdname,
+            } => {
+                assert_eq!(name, "owner.example.com");
+                assert_eq!(ttl, 60);
+                assert_eq!(ptrdname, "host.example.com");
+            }
+            other => panic!("expected PTR record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_srv_record() {
+        let mut rdata = Vec::new();
+        rdata.extend_from_slice(&1u16.to_be_bytes()); // priority
+        rdata.extend_from_slice(&2u16.to_be_bytes()); // weight
+        rdata.extend_from_slice(&443u16.to_be_bytes()); // port
+        rdata.extend_from_slice(&encode_name("svc.example.com"));
+        match parse_single_answer(DnsType::SRV, 60, &rdata) {
+            DnsRecord::SRV {
+                name,
+                ttl,
+                priority,
+                weight,
+                port,
+                target,
+            } => {
+                assert_eq!(name, "owner.example.com");
+                assert_eq!(ttl, 60);
+                assert_eq!(priority, 1);
+                assert_eq!(weight, 2);
+                assert_eq!(port, 443);
+                assert_eq!(target, "svc.example.com");
+            }
+            other => panic!("expected SRV record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_soa_record() {
+        let mut rdata = encode_name("ns.example.com");
+        rdata.extend_from_slice(&encode_name("admin.example.com"));
+        for n in [1u32, 2, 3, 4, 5] {
+            rdata.extend_from_slice(&n.to_be_bytes());
+        }
+        match parse_single_answer(DnsType::SOA, 900, &rdata) {
+            DnsRecord::SOA {
+                name,
+                ttl,
+                mname,
+                rname,
+                serial,
+                refresh,
+                retry,
+                expire,
+                minimum,
+            } => {
+                assert_eq!(name, "owner.example.com");
+                assert_eq!(ttl, 900);
+                assert_eq!(mname, "ns.example.com");
+                assert_eq!(rname, "admin.example.com");
+                assert_eq!(serial, 1);
+                assert_eq!(refresh, 2);
+                assert_eq!(retry, 3);
+                assert_eq!(expire, 4);
+                assert_eq!(minimum, 5);
+            }
+            other => panic!("expected SOA record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_txt_and_unknown_records() {
+        match parse_single_answer(DnsType::TXT, 60, b"hello world") {
+            DnsRecord::TXT { name, ttl, data } => {
+                assert_eq!(name, "owner.example.com");
+                assert_eq!(ttl, 60);
+                assert_eq!(data, b"hello world");
+            }
+            other => panic!("expected TXT record, got {other:?}"),
+        }
+
+        match parse_single_answer(DnsType::Unknown(99), 60, &[1, 2, 3]) {
+            DnsRecord::Unknown {
+                name,
+                qtype,
+                ttl,
+                rdata,
+            } => {
+                assert_eq!(name, "owner.example.com");
+                assert_eq!(qtype, DnsType::Unknown(99));
+                assert_eq!(ttl, 60);
+                assert_eq!(rdata, vec![1, 2, 3]);
+            }
+            other => panic!("expected Unknown record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn short_rdata_falls_back_to_unknown() {
+        for (qtype, rdata) in [
+            (DnsType::A, &[1u8, 2, 3][..]),
+            (DnsType::AAAA, &[0u8; 15][..]),
+            (DnsType::MX, &[0u8, 10][..]),
+            (DnsType::SRV, &[0u8; 5][..]),
+            (DnsType::CNAME, &[][..]),
+        ] {
+            match parse_single_answer(qtype, 60, rdata) {
+                DnsRecord::Unknown { qtype: got, .. } => assert_eq!(got, qtype),
+                other => panic!("expected Unknown for {qtype:?}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn short_soa_rdata_falls_back_to_unknown() {
+        match parse_single_answer(DnsType::SOA, 60, &[0u8; 19]) {
+            DnsRecord::Unknown { qtype, .. } => assert_eq!(qtype, DnsType::SOA),
+            other => panic!("expected Unknown for SOA, got {other:?}"),
+        }
+    }
+
+    /// Characterization: when the SOA owner names are unparseable but 20 bytes
+    /// of numeric data are present, names default to empty strings and the
+    /// numeric fields are read from the start of the RDATA.
+    #[test]
+    fn malformed_soa_names_are_empty_and_numbers_read_from_start() {
+        let mut rdata = vec![64u8]; // invalid label length (> 63)
+        rdata.extend_from_slice(&[0u8; 19]);
+        match parse_single_answer(DnsType::SOA, 60, &rdata) {
+            DnsRecord::SOA {
+                mname,
+                rname,
+                serial,
+                ..
+            } => {
+                assert_eq!(mname, "");
+                assert_eq!(rname, "");
+                assert_eq!(serial, u32::from_be_bytes([64, 0, 0, 0]));
+            }
+            other => panic!("expected SOA record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_all_sections() {
+        let ns_rdata = encode_name("ns.example.com");
+        let data = DnsPacketBuilder::response()
+            .add_question("q.example.com", DnsType::A, DnsClass::IN)
+            .add_raw_answer("q.example.com", DnsType::A, 60, &[1, 2, 3, 4])
+            .add_raw_authority("example.com", DnsType::NS, 60, &ns_rdata)
+            .add_raw_additional("ns.example.com", DnsType::A, 60, &[5, 6, 7, 8])
+            .build();
+
+        let pkt = DnsPacket::new(&data).unwrap();
+        assert_eq!(pkt.questions_count(), 1);
+        assert_eq!(pkt.answers_count(), 1);
+        assert_eq!(pkt.authorities_count(), 1);
+        assert_eq!(pkt.additionals_count(), 1);
+
+        assert_eq!(pkt.questions().count(), 1);
+        assert!(matches!(
+            pkt.answers().next(),
+            Some(DnsRecord::A { addr, .. }) if addr == Ipv4Addr::new(1, 2, 3, 4)
+        ));
+        assert!(matches!(
+            pkt.authorities().next(),
+            Some(DnsRecord::NS { nsdname, .. }) if nsdname == "ns.example.com"
+        ));
+        assert!(matches!(
+            pkt.additionals().next(),
+            Some(DnsRecord::A { addr, .. }) if addr == Ipv4Addr::new(5, 6, 7, 8)
+        ));
     }
 }
