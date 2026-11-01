@@ -2,10 +2,13 @@
 
 use alloc::vec;
 use alloc::vec::Vec;
-use core::net::Ipv4Addr;
+use core::net::{Ipv4Addr, Ipv6Addr};
 
 use crate::types::IpProtocol;
-use crate::util::{pseudo_header_checksum, read_u16be, seal_transport_checksum, write_u16be};
+use crate::util::{
+    ipv4_transport_checksum, ipv6_transport_checksum, read_u16be, seal_transport_checksum,
+    write_u16be,
+};
 
 pub const UDP_HEADER_LEN: usize = 8;
 
@@ -49,18 +52,20 @@ impl<'a> UdpPacket<'a> {
         &self.buf[UDP_HEADER_LEN..]
     }
 
-    /// Verify the UDP checksum (includes IPv4 pseudo-header).
-    /// Returns true for zero checksum (allowed in IPv4 UDP).
+    /// Verify the UDP checksum with an IPv4 pseudo-header.
+    /// Returns true for a zero checksum (allowed in IPv4 UDP).
     pub fn verify_checksum(&self, src: Ipv4Addr, dst: Ipv4Addr) -> bool {
         if self.checksum() == 0 {
             return true; // zero checksum means "not computed" per RFC 768
         }
-        pseudo_header_checksum(
-            &src.octets(),
-            &dst.octets(),
-            IpProtocol::Udp.into(),
-            self.buf,
-        ) == 0
+        ipv4_transport_checksum(src, dst, IpProtocol::Udp.into(), self.buf) == 0
+    }
+
+    /// Verify the UDP checksum with an IPv6 pseudo-header.
+    ///
+    /// Unlike IPv4, a zero checksum is not valid for UDP over IPv6.
+    pub fn verify_checksum_v6(&self, src: Ipv6Addr, dst: Ipv6Addr) -> bool {
+        ipv6_transport_checksum(src, dst, IpProtocol::Udp.into(), self.buf) == 0
     }
 }
 
@@ -102,14 +107,45 @@ impl UdpPacketBuilder {
         self
     }
 
-    /// Build the UDP packet, computing the checksum (IPv4 pseudo-header).
-    pub fn build(self, src: Ipv4Addr, dst: Ipv4Addr) -> Vec<u8> {
-        let mut packet = self.buf;
+    /// Finalize the UDP datagram with a zero checksum field.
+    fn finish(mut self) -> Vec<u8> {
         if let Some(ref p) = self.payload {
-            packet.extend_from_slice(p);
+            self.buf.extend_from_slice(p);
         }
-        let total_len = packet.len();
-        write_u16be(&mut packet[4..6], total_len as u16);
+        let total_len = self.buf.len();
+        write_u16be(&mut self.buf[4..6], total_len as u16);
+        self.buf
+    }
+
+    /// Build the UDP packet, computing the checksum with an IPv4 pseudo-header.
+    pub fn build(self, src: Ipv4Addr, dst: Ipv4Addr) -> Vec<u8> {
+        let mut packet = self.finish();
+        seal_transport_checksum(
+            &mut packet,
+            6,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Udp.into(),
+        );
+        packet
+    }
+
+    /// Build the UDP packet, computing the checksum with an IPv6 pseudo-header.
+    ///
+    /// ```
+    /// use core::net::Ipv6Addr;
+    /// use wireforge_core::udp::{UdpPacket, UdpPacketBuilder};
+    ///
+    /// let src: Ipv6Addr = "2001:db8::1".parse().unwrap();
+    /// let dst: Ipv6Addr = "2001:db8::2".parse().unwrap();
+    /// let bytes = UdpPacketBuilder::new()
+    ///     .source_port(53)
+    ///     .destination_port(5353)
+    ///     .build_v6(src, dst);
+    /// assert!(UdpPacket::new(&bytes).unwrap().verify_checksum_v6(src, dst));
+    /// ```
+    pub fn build_v6(self, src: Ipv6Addr, dst: Ipv6Addr) -> Vec<u8> {
+        let mut packet = self.finish();
         seal_transport_checksum(
             &mut packet,
             6,
@@ -232,6 +268,17 @@ impl<'a> MutableUdpPacket<'a> {
 
     /// Recompute the UDP checksum with an IPv4 pseudo-header.
     pub fn update_checksum(&mut self, src: Ipv4Addr, dst: Ipv4Addr) {
+        seal_transport_checksum(
+            self.buf,
+            6,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Udp.into(),
+        );
+    }
+
+    /// Recompute the UDP checksum with an IPv6 pseudo-header.
+    pub fn update_checksum_v6(&mut self, src: Ipv6Addr, dst: Ipv6Addr) {
         seal_transport_checksum(
             self.buf,
             6,

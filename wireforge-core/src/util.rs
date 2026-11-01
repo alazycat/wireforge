@@ -1,5 +1,7 @@
 //! Byte-order helpers, checksum computation, error types.
 
+use core::net::{Ipv4Addr, Ipv6Addr};
+
 // ---------------------------------------------------------------------------
 // Big-endian byte read/write helpers
 // ---------------------------------------------------------------------------
@@ -91,6 +93,20 @@ fn add_slice_to_sum(mut sum: u32, mut data: &[u8]) -> u32 {
         sum += (data[0] as u32) << 8;
     }
     sum
+}
+
+/// Compute a transport-layer checksum using the IPv4 pseudo-header.
+///
+/// `data` is the complete transport segment (header + payload).
+pub fn ipv4_transport_checksum(src: Ipv4Addr, dst: Ipv4Addr, protocol: u8, data: &[u8]) -> u16 {
+    pseudo_header_checksum(&src.octets(), &dst.octets(), protocol, data)
+}
+
+/// Compute a transport-layer checksum using the IPv6 pseudo-header.
+///
+/// `data` is the complete transport segment (header + payload).
+pub fn ipv6_transport_checksum(src: Ipv6Addr, dst: Ipv6Addr, protocol: u8, data: &[u8]) -> u16 {
+    pseudo_header_checksum(&src.octets(), &dst.octets(), protocol, data)
 }
 
 // ---------------------------------------------------------------------------
