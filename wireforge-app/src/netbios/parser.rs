@@ -48,11 +48,17 @@ impl<'a> NetbiosNsPacket<'a> {
     }
 
     pub fn question_name(&self) -> String {
-        decode_nb_name(&self.buf[12..44].try_into().unwrap_or([0u8; 32]))
+        match self.buf.get(12..44).and_then(|bytes| bytes.try_into().ok()) {
+            Some(encoded) => decode_nb_name(encoded),
+            None => String::new(),
+        }
     }
 
     pub fn question_type(&self) -> NetbiosNameType {
-        NetbiosNameType::from(read_u16be(&self.buf[44..46]))
+        self.buf
+            .get(44..46)
+            .map(|bytes| NetbiosNameType::from(read_u16be(bytes)))
+            .unwrap_or(NetbiosNameType::Unknown(0))
     }
 }
 
@@ -97,5 +103,13 @@ mod tests {
         assert!(p.is_query());
         assert_eq!(p.question_name(), "HOST1");
         assert_eq!(p.question_type(), NetbiosNameType::NB);
+    }
+
+    #[test]
+    fn truncated_packet_accessors_do_not_panic() {
+        let data = [0u8; NETBIOS_NS_MIN_LEN];
+        let p = NetbiosNsPacket::new(&data).unwrap();
+        assert_eq!(p.question_name(), "");
+        assert_eq!(p.question_type(), NetbiosNameType::Unknown(0));
     }
 }
