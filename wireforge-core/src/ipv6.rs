@@ -667,3 +667,88 @@ mod tests {
         assert_eq!(ext.len(), 1);
     }
 }
+
+crate::impl_mutable_packet!(MutableIpv6Packet, IPV6_HEADER_LEN);
+
+impl<'a> MutableIpv6Packet<'a> {
+    fn view(&self) -> Ipv6Packet<'_> {
+        Ipv6Packet::new(&*self.buf).expect("validated in MutableIpv6Packet::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        self.buf.len() - self.view().payload().len()
+    }
+
+    /// Traffic class.
+    pub fn traffic_class(&self) -> u8 {
+        self.view().traffic_class()
+    }
+
+    /// Set the traffic class.
+    pub fn set_traffic_class(&mut self, traffic_class: u8) {
+        self.buf[0] = (self.buf[0] & 0xF0) | (traffic_class >> 4);
+        self.buf[1] = ((traffic_class & 0x0F) << 4) | (self.buf[1] & 0x0F);
+    }
+
+    /// Flow label.
+    pub fn flow_label(&self) -> u32 {
+        self.view().flow_label()
+    }
+
+    /// Set the flow label.
+    pub fn set_flow_label(&mut self, flow_label: u32) {
+        let current = read_u32be(&self.buf[..4]);
+        let updated = (current & 0xFFF0_0000) | (flow_label & 0x000F_FFFF);
+        write_u32be(&mut self.buf[..4], updated);
+    }
+
+    /// Payload length.
+    pub fn payload_length(&self) -> u16 {
+        self.view().payload_length()
+    }
+
+    /// Set the payload length.
+    pub fn set_payload_length(&mut self, length: u16) {
+        write_u16be(&mut self.buf[4..6], length);
+    }
+
+    /// Next header.
+    pub fn next_header(&self) -> IpProtocol {
+        self.view().next_header()
+    }
+
+    /// Set the next header.
+    pub fn set_next_header(&mut self, protocol: IpProtocol) {
+        self.buf[6] = protocol.into();
+    }
+
+    /// Hop limit.
+    pub fn hop_limit(&self) -> u8 {
+        self.view().hop_limit()
+    }
+
+    /// Set the hop limit.
+    pub fn set_hop_limit(&mut self, hop_limit: u8) {
+        self.buf[7] = hop_limit;
+    }
+
+    /// Source address.
+    pub fn source(&self) -> Ipv6Addr {
+        self.view().source()
+    }
+
+    /// Set the source address.
+    pub fn set_source(&mut self, source: Ipv6Addr) {
+        self.buf[8..24].copy_from_slice(&source.octets());
+    }
+
+    /// Destination address.
+    pub fn destination(&self) -> Ipv6Addr {
+        self.view().destination()
+    }
+
+    /// Set the destination address.
+    pub fn set_destination(&mut self, destination: Ipv6Addr) {
+        self.buf[24..40].copy_from_slice(&destination.octets());
+    }
+}

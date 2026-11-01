@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use crate::types::EtherType;
-use crate::util::read_u16be;
+use crate::util::{read_u16be, write_u16be};
 
 /// Length of a single VLAN tag header (TPID + TCI).
 pub const VLAN_HEADER_LEN: usize = 4;
@@ -149,5 +149,84 @@ mod tests {
         assert_eq!(tags[0].vid(), 100);
         assert_eq!(final_et, EtherType::Ipv4);
         assert_eq!(payload, &[0x45]);
+    }
+}
+
+crate::impl_mutable_packet!(MutableVlanPacket, VLAN_HEADER_LEN);
+
+impl<'a> MutableVlanPacket<'a> {
+    fn view(&self) -> VlanPacket<'_> {
+        VlanPacket::new(&*self.buf).expect("validated in MutableVlanPacket::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        VLAN_HEADER_LEN
+    }
+
+    /// Raw tag control information (PCP + DEI + VID).
+    pub fn tci(&self) -> u16 {
+        read_u16be(&self.buf[..2])
+    }
+
+    /// Set the raw tag control information.
+    pub fn set_tci(&mut self, tci: u16) {
+        write_u16be(&mut self.buf[..2], tci);
+    }
+
+    /// Priority code point.
+    pub fn pcp(&self) -> u8 {
+        self.view().pcp()
+    }
+
+    /// Set the priority code point.
+    pub fn set_pcp(&mut self, pcp: u8) {
+        let tci = (self.tci() & !0xE000) | (((pcp as u16) & 0x7) << 13);
+        self.set_tci(tci);
+    }
+
+    /// Drop-eligible indicator.
+    pub fn dei(&self) -> bool {
+        self.view().dei()
+    }
+
+    /// Set the drop-eligible indicator.
+    pub fn set_dei(&mut self, dei: bool) {
+        let tci = if dei {
+            self.tci() | 0x1000
+        } else {
+            self.tci() & !0x1000
+        };
+        self.set_tci(tci);
+    }
+
+    /// VLAN identifier.
+    pub fn vid(&self) -> u16 {
+        self.view().vid()
+    }
+
+    /// Set the VLAN identifier.
+    pub fn set_vid(&mut self, vid: u16) {
+        let tci = (self.tci() & !0x0FFF) | (vid & 0x0FFF);
+        self.set_tci(tci);
+    }
+
+    /// Inner EtherType.
+    pub fn ethertype(&self) -> EtherType {
+        self.view().ethertype()
+    }
+
+    /// Set the inner EtherType.
+    pub fn set_ethertype(&mut self, ethertype: EtherType) {
+        write_u16be(&mut self.buf[2..4], ethertype.into());
+    }
+
+    /// Raw inner EtherType value.
+    pub fn raw_ethertype(&self) -> u16 {
+        self.view().raw_ethertype()
+    }
+
+    /// Set the raw inner EtherType value.
+    pub fn set_raw_ethertype(&mut self, ethertype: u16) {
+        write_u16be(&mut self.buf[2..4], ethertype);
     }
 }

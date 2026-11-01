@@ -5,7 +5,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::net::Ipv4Addr;
 
-use crate::util::{internet_checksum, read_u16be, seal_internet_checksum, PacketBuilder};
+use crate::util::{
+    internet_checksum, read_u16be, seal_internet_checksum, write_u16be, PacketBuilder,
+};
 
 pub const IGMP_MIN_LEN: usize = 8;
 
@@ -310,5 +312,62 @@ mod tests {
         assert_eq!(parsed.group_address(), addr);
         assert_eq!(parsed.payload(), &[0xAA, 0xBB]);
         assert!(parsed.verify_checksum());
+    }
+}
+
+crate::impl_mutable_packet!(MutableIgmpPacket, IGMP_MIN_LEN);
+
+impl<'a> MutableIgmpPacket<'a> {
+    fn view(&self) -> IgmpPacket<'_> {
+        IgmpPacket::new(&*self.buf).expect("validated in MutableIgmpPacket::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        IGMP_MIN_LEN
+    }
+
+    /// IGMP message type.
+    pub fn type_(&self) -> u8 {
+        self.view().type_()
+    }
+
+    /// Set the IGMP message type.
+    pub fn set_type(&mut self, type_: u8) {
+        self.buf[0] = type_;
+    }
+
+    /// Maximum response time (or code).
+    pub fn max_response(&self) -> u8 {
+        self.view().max_response()
+    }
+
+    /// Set the maximum response time.
+    pub fn set_max_response(&mut self, max_response: u8) {
+        self.buf[1] = max_response;
+    }
+
+    /// Checksum.
+    pub fn checksum(&self) -> u16 {
+        self.view().checksum()
+    }
+
+    /// Set the checksum directly.
+    pub fn set_checksum(&mut self, checksum: u16) {
+        write_u16be(&mut self.buf[2..4], checksum);
+    }
+
+    /// Group address.
+    pub fn group_address(&self) -> Ipv4Addr {
+        self.view().group_address()
+    }
+
+    /// Set the group address.
+    pub fn set_group_address(&mut self, group: Ipv4Addr) {
+        self.buf[4..8].copy_from_slice(&group.octets());
+    }
+
+    /// Recompute the IGMP checksum in place.
+    pub fn update_checksum(&mut self) {
+        seal_internet_checksum(self.buf, 2);
     }
 }

@@ -4,7 +4,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::types::{ArpHardwareType, ArpOperation, EtherType};
-use crate::util::{read_u16be, BuildError};
+use crate::util::{read_u16be, write_u16be, BuildError};
 
 /// Minimum ARP packet length for Ethernet/IPv4 (28 bytes: 8-byte header + 2×6 MAC + 2×4 IP).
 pub const ARP_HEADER_LEN: usize = 28;
@@ -266,4 +266,162 @@ mod tests {
         assert_eq!(pkt.sender_hw_addr(), &[0x11, 0x22, 0x33, 0x44, 0x55, 0x66]);
         assert_eq!(pkt.target_proto_addr(), &[10, 0, 0, 2]);
     }
+}
+
+crate::impl_mutable_packet!(MutableArpPacket, ARP_HEADER_LEN);
+
+impl<'a> MutableArpPacket<'a> {
+    fn view(&self) -> ArpPacket<'_> {
+        ArpPacket::new(&*self.buf).expect("validated in MutableArpPacket::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        ARP_HEADER_LEN
+    }
+
+    /// Hardware type.
+    pub fn hardware_type(&self) -> ArpHardwareType {
+        self.view().hardware_type()
+    }
+
+    /// Set the hardware type.
+    pub fn set_hardware_type(&mut self, hardware_type: ArpHardwareType) {
+        write_u16be(&mut self.buf[..2], hardware_type.into());
+    }
+
+    /// Protocol type.
+    pub fn protocol_type(&self) -> EtherType {
+        self.view().protocol_type()
+    }
+
+    /// Set the protocol type.
+    pub fn set_protocol_type(&mut self, protocol_type: EtherType) {
+        write_u16be(&mut self.buf[2..4], protocol_type.into());
+    }
+
+    /// Hardware address length.
+    pub fn hw_addr_len(&self) -> u8 {
+        self.view().hw_addr_len()
+    }
+
+    /// Set the hardware address length.
+    pub fn set_hw_addr_len(&mut self, len: u8) {
+        self.buf[4] = len;
+    }
+
+    /// Protocol address length.
+    pub fn proto_addr_len(&self) -> u8 {
+        self.view().proto_addr_len()
+    }
+
+    /// Set the protocol address length.
+    pub fn set_proto_addr_len(&mut self, len: u8) {
+        self.buf[5] = len;
+    }
+
+    /// ARP operation.
+    pub fn operation(&self) -> ArpOperation {
+        self.view().operation()
+    }
+
+    /// Set the ARP operation.
+    pub fn set_operation(&mut self, operation: ArpOperation) {
+        write_u16be(&mut self.buf[6..8], operation.into());
+    }
+
+    /// Sender hardware address (raw bytes).
+    pub fn sender_hw_addr(&self) -> &[u8] {
+        self.view().sender_hw_addr()
+    }
+
+    /// Set the sender hardware address.
+    pub fn set_sender_hw_addr(&mut self, addr: &[u8]) -> Result<(), BuildError> {
+        let expected = self.hw_addr_len();
+        set_arp_hw_addr(&mut self.buf[8..14], expected, addr, "sender_hw_addr")
+    }
+
+    /// Set the sender MAC address (Ethernet ARP).
+    pub fn set_sender_mac(&mut self, mac: [u8; 6]) {
+        self.buf[8..14].copy_from_slice(&mac);
+    }
+
+    /// Sender protocol address (raw bytes).
+    pub fn sender_proto_addr(&self) -> &[u8] {
+        self.view().sender_proto_addr()
+    }
+
+    /// Set the sender protocol address.
+    pub fn set_sender_proto_addr(&mut self, addr: &[u8]) -> Result<(), BuildError> {
+        let expected = self.proto_addr_len();
+        set_arp_proto_addr(&mut self.buf[14..18], expected, addr, "sender_proto_addr")
+    }
+
+    /// Set the sender IPv4 address.
+    pub fn set_sender_ip(&mut self, ip: core::net::Ipv4Addr) {
+        self.buf[14..18].copy_from_slice(&ip.octets());
+    }
+
+    /// Target hardware address (raw bytes).
+    pub fn target_hw_addr(&self) -> &[u8] {
+        self.view().target_hw_addr()
+    }
+
+    /// Set the target hardware address.
+    pub fn set_target_hw_addr(&mut self, addr: &[u8]) -> Result<(), BuildError> {
+        let expected = self.hw_addr_len();
+        set_arp_hw_addr(&mut self.buf[18..24], expected, addr, "target_hw_addr")
+    }
+
+    /// Set the target MAC address (Ethernet ARP).
+    pub fn set_target_mac(&mut self, mac: [u8; 6]) {
+        self.buf[18..24].copy_from_slice(&mac);
+    }
+
+    /// Target protocol address (raw bytes).
+    pub fn target_proto_addr(&self) -> &[u8] {
+        self.view().target_proto_addr()
+    }
+
+    /// Set the target protocol address.
+    pub fn set_target_proto_addr(&mut self, addr: &[u8]) -> Result<(), BuildError> {
+        let expected = self.proto_addr_len();
+        set_arp_proto_addr(&mut self.buf[24..28], expected, addr, "target_proto_addr")
+    }
+
+    /// Set the target IPv4 address.
+    pub fn set_target_ip(&mut self, ip: core::net::Ipv4Addr) {
+        self.buf[24..28].copy_from_slice(&ip.octets());
+    }
+}
+
+fn set_arp_hw_addr(
+    slot: &mut [u8],
+    expected: u8,
+    addr: &[u8],
+    field: &'static str,
+) -> Result<(), BuildError> {
+    if addr.len() != expected as usize || addr.len() > slot.len() {
+        return Err(BuildError::InvalidField {
+            field,
+            reason: "address length must match hw_addr_len",
+        });
+    }
+    slot[..addr.len()].copy_from_slice(addr);
+    Ok(())
+}
+
+fn set_arp_proto_addr(
+    slot: &mut [u8],
+    expected: u8,
+    addr: &[u8],
+    field: &'static str,
+) -> Result<(), BuildError> {
+    if addr.len() != expected as usize || addr.len() > slot.len() {
+        return Err(BuildError::InvalidField {
+            field,
+            reason: "address length must match proto_addr_len",
+        });
+    }
+    slot[..addr.len()].copy_from_slice(addr);
+    Ok(())
 }

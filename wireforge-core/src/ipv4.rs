@@ -356,3 +356,157 @@ mod tests {
         assert!(pkt.verify_checksum());
     }
 }
+
+crate::impl_mutable_packet!(MutableIpv4Packet, IPV4_MIN_HEADER_LEN);
+
+impl<'a> MutableIpv4Packet<'a> {
+    fn view(&self) -> Ipv4Packet<'_> {
+        Ipv4Packet::new(&*self.buf).expect("validated in MutableIpv4Packet::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        self.view().header_length()
+    }
+
+    /// Header length in bytes (IHL × 4).
+    pub fn header_length(&self) -> usize {
+        self.view().header_length()
+    }
+
+    /// DSCP field.
+    pub fn dscp(&self) -> u8 {
+        self.view().dscp()
+    }
+
+    /// Set the DSCP field.
+    pub fn set_dscp(&mut self, dscp: u8) {
+        self.buf[1] = (self.buf[1] & 0x03) | ((dscp & 0x3F) << 2);
+    }
+
+    /// ECN field.
+    pub fn ecn(&self) -> u8 {
+        self.view().ecn()
+    }
+
+    /// Set the ECN field.
+    pub fn set_ecn(&mut self, ecn: u8) {
+        self.buf[1] = (self.buf[1] & 0xFC) | (ecn & 0x03);
+    }
+
+    /// Total packet length.
+    pub fn total_length(&self) -> u16 {
+        self.view().total_length()
+    }
+
+    /// Set the total packet length.
+    pub fn set_total_length(&mut self, length: u16) {
+        write_u16be(&mut self.buf[2..4], length);
+    }
+
+    /// Identification field.
+    pub fn identification(&self) -> u16 {
+        self.view().identification()
+    }
+
+    /// Set the identification field.
+    pub fn set_identification(&mut self, id: u16) {
+        write_u16be(&mut self.buf[4..6], id);
+    }
+
+    /// Whether the Don't Fragment flag is set.
+    pub fn dont_fragment(&self) -> bool {
+        self.view().dont_fragment()
+    }
+
+    /// Set the Don't Fragment flag.
+    pub fn set_dont_fragment(&mut self, on: bool) {
+        if on {
+            self.buf[6] |= 0x40;
+        } else {
+            self.buf[6] &= !0x40;
+        }
+    }
+
+    /// Whether the More Fragments flag is set.
+    pub fn more_fragments(&self) -> bool {
+        self.view().more_fragments()
+    }
+
+    /// Set the More Fragments flag.
+    pub fn set_more_fragments(&mut self, on: bool) {
+        if on {
+            self.buf[6] |= 0x20;
+        } else {
+            self.buf[6] &= !0x20;
+        }
+    }
+
+    /// Fragment offset.
+    pub fn fragment_offset(&self) -> u16 {
+        self.view().fragment_offset()
+    }
+
+    /// Set the fragment offset, preserving the flag bits.
+    pub fn set_fragment_offset(&mut self, offset: u16) {
+        let flags = read_u16be(&self.buf[6..8]) & 0xE000;
+        write_u16be(&mut self.buf[6..8], flags | (offset & 0x1FFF));
+    }
+
+    /// Time to live.
+    pub fn ttl(&self) -> u8 {
+        self.view().ttl()
+    }
+
+    /// Set the time to live.
+    pub fn set_ttl(&mut self, ttl: u8) {
+        self.buf[8] = ttl;
+    }
+
+    /// Upper-layer protocol.
+    pub fn protocol(&self) -> IpProtocol {
+        self.view().protocol()
+    }
+
+    /// Set the upper-layer protocol.
+    pub fn set_protocol(&mut self, protocol: IpProtocol) {
+        self.buf[9] = protocol.into();
+    }
+
+    /// Header checksum.
+    pub fn checksum(&self) -> u16 {
+        self.view().checksum()
+    }
+
+    /// Set the header checksum directly.
+    pub fn set_checksum(&mut self, checksum: u16) {
+        write_u16be(&mut self.buf[10..12], checksum);
+    }
+
+    /// Source address.
+    pub fn source(&self) -> Ipv4Addr {
+        self.view().source()
+    }
+
+    /// Set the source address.
+    pub fn set_source(&mut self, source: Ipv4Addr) {
+        self.buf[12..16].copy_from_slice(&source.octets());
+    }
+
+    /// Destination address.
+    pub fn destination(&self) -> Ipv4Addr {
+        self.view().destination()
+    }
+
+    /// Set the destination address.
+    pub fn set_destination(&mut self, destination: Ipv4Addr) {
+        self.buf[16..20].copy_from_slice(&destination.octets());
+    }
+
+    /// Recompute the IPv4 header checksum in place.
+    pub fn update_checksum(&mut self) {
+        let header_len = self.header_length();
+        self.set_checksum(0);
+        let checksum = internet_checksum(&self.buf[..header_len]);
+        self.set_checksum(checksum);
+    }
+}

@@ -178,3 +178,66 @@ mod tests {
         assert!(pkt.verify_checksum(src, dst));
     }
 }
+
+crate::impl_mutable_packet!(MutableUdpPacket, UDP_HEADER_LEN);
+
+impl<'a> MutableUdpPacket<'a> {
+    fn view(&self) -> UdpPacket<'_> {
+        UdpPacket::new(&*self.buf).expect("validated in MutableUdpPacket::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        UDP_HEADER_LEN
+    }
+
+    /// Source port.
+    pub fn source_port(&self) -> u16 {
+        self.view().source_port()
+    }
+
+    /// Set the source port.
+    pub fn set_source_port(&mut self, port: u16) {
+        write_u16be(&mut self.buf[..2], port);
+    }
+
+    /// Destination port.
+    pub fn destination_port(&self) -> u16 {
+        self.view().destination_port()
+    }
+
+    /// Set the destination port.
+    pub fn set_destination_port(&mut self, port: u16) {
+        write_u16be(&mut self.buf[2..4], port);
+    }
+
+    /// UDP length field.
+    pub fn length(&self) -> u16 {
+        self.view().length()
+    }
+
+    /// Set the UDP length field.
+    pub fn set_length(&mut self, length: u16) {
+        write_u16be(&mut self.buf[4..6], length);
+    }
+
+    /// Checksum.
+    pub fn checksum(&self) -> u16 {
+        self.view().checksum()
+    }
+
+    /// Set the checksum directly.
+    pub fn set_checksum(&mut self, checksum: u16) {
+        write_u16be(&mut self.buf[6..8], checksum);
+    }
+
+    /// Recompute the UDP checksum with an IPv4 pseudo-header.
+    pub fn update_checksum(&mut self, src: Ipv4Addr, dst: Ipv4Addr) {
+        seal_transport_checksum(
+            self.buf,
+            6,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Udp.into(),
+        );
+    }
+}
