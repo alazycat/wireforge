@@ -771,3 +771,153 @@ mod tests {
         }
     }
 }
+
+crate::impl_mutable_packet!(MutableIcmpPacket, ICMP_HEADER_LEN);
+
+impl<'a> MutableIcmpPacket<'a> {
+    fn view(&self) -> IcmpPacket<'_> {
+        IcmpPacket::new(&*self.buf).expect("validated in MutableIcmpPacket::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        ICMP_HEADER_LEN
+    }
+
+    /// ICMP type.
+    pub fn type_(&self) -> u8 {
+        self.view().type_()
+    }
+
+    /// Set the ICMP type.
+    pub fn set_type(&mut self, type_: u8) {
+        self.buf[0] = type_;
+    }
+
+    /// ICMP code.
+    pub fn code(&self) -> u8 {
+        self.view().code()
+    }
+
+    /// Set the ICMP code.
+    pub fn set_code(&mut self, code: u8) {
+        self.buf[1] = code;
+    }
+
+    /// Checksum.
+    pub fn checksum(&self) -> u16 {
+        self.view().checksum()
+    }
+
+    /// Set the checksum directly.
+    pub fn set_checksum(&mut self, checksum: u16) {
+        write_u16be(&mut self.buf[2..4], checksum);
+    }
+
+    /// Echo identifier (bytes 4-5).
+    pub fn identifier(&self) -> u16 {
+        read_u16be(&self.buf[4..6])
+    }
+
+    /// Set the echo identifier.
+    pub fn set_identifier(&mut self, identifier: u16) {
+        write_u16be(&mut self.buf[4..6], identifier);
+    }
+
+    /// Echo sequence number (bytes 6-7).
+    pub fn sequence_number(&self) -> u16 {
+        read_u16be(&self.buf[6..8])
+    }
+
+    /// Set the echo sequence number.
+    pub fn set_sequence_number(&mut self, sequence: u16) {
+        write_u16be(&mut self.buf[6..8], sequence);
+    }
+
+    /// Recompute the ICMP checksum in place.
+    pub fn update_checksum(&mut self) {
+        seal_internet_checksum(self.buf, 2);
+    }
+}
+
+crate::impl_mutable_packet!(MutableIcmpv6Packet, ICMPV6_HEADER_LEN);
+
+impl<'a> MutableIcmpv6Packet<'a> {
+    fn view(&self) -> Icmpv6Packet<'_> {
+        Icmpv6Packet::new(&*self.buf).expect("validated in MutableIcmpv6Packet::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        ICMPV6_HEADER_LEN
+    }
+
+    /// ICMPv6 type.
+    pub fn type_(&self) -> u8 {
+        self.view().type_()
+    }
+
+    /// Set the ICMPv6 type.
+    pub fn set_type(&mut self, type_: u8) {
+        self.buf[0] = type_;
+    }
+
+    /// ICMPv6 code.
+    pub fn code(&self) -> u8 {
+        self.view().code()
+    }
+
+    /// Set the ICMPv6 code.
+    pub fn set_code(&mut self, code: u8) {
+        self.buf[1] = code;
+    }
+
+    /// Checksum.
+    pub fn checksum(&self) -> u16 {
+        self.view().checksum()
+    }
+
+    /// Set the checksum directly.
+    pub fn set_checksum(&mut self, checksum: u16) {
+        write_u16be(&mut self.buf[2..4], checksum);
+    }
+
+    /// Echo identifier (bytes 4-5).
+    pub fn identifier(&self) -> u16 {
+        read_u16be(&self.buf[4..6])
+    }
+
+    /// Set the echo identifier.
+    pub fn set_identifier(&mut self, identifier: u16) {
+        write_u16be(&mut self.buf[4..6], identifier);
+    }
+
+    /// Echo sequence number (bytes 6-7).
+    pub fn sequence_number(&self) -> u16 {
+        read_u16be(&self.buf[6..8])
+    }
+
+    /// Set the echo sequence number.
+    pub fn set_sequence_number(&mut self, sequence: u16) {
+        write_u16be(&mut self.buf[6..8], sequence);
+    }
+
+    /// The body after the 8-byte ICMPv6 header.
+    pub fn body(&self) -> &[u8] {
+        self.payload()
+    }
+
+    /// Mutable body after the 8-byte ICMPv6 header.
+    pub fn body_mut(&mut self) -> &mut [u8] {
+        self.payload_mut()
+    }
+
+    /// Recompute the ICMPv6 checksum with an IPv6 pseudo-header.
+    pub fn update_checksum(&mut self, src: Ipv6Addr, dst: Ipv6Addr) {
+        seal_transport_checksum(
+            self.buf,
+            2,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Icmpv6.into(),
+        );
+    }
+}

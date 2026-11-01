@@ -709,3 +709,155 @@ mod tests {
         assert!(matches!(opts[0], TcpOption::EndOfList));
     }
 }
+
+crate::impl_mutable_packet!(MutableTcpPacket, TCP_MIN_HEADER_LEN);
+
+impl<'a> MutableTcpPacket<'a> {
+    fn view(&self) -> TcpPacket<'_> {
+        TcpPacket::new(&*self.buf).expect("validated in MutableTcpPacket::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        self.view().header_length()
+    }
+
+    /// TCP header length in bytes.
+    pub fn header_length(&self) -> usize {
+        self.view().header_length()
+    }
+
+    /// Source port.
+    pub fn source_port(&self) -> u16 {
+        self.view().source_port()
+    }
+
+    /// Set the source port.
+    pub fn set_source_port(&mut self, port: u16) {
+        write_u16be(&mut self.buf[..2], port);
+    }
+
+    /// Destination port.
+    pub fn destination_port(&self) -> u16 {
+        self.view().destination_port()
+    }
+
+    /// Set the destination port.
+    pub fn set_destination_port(&mut self, port: u16) {
+        write_u16be(&mut self.buf[2..4], port);
+    }
+
+    /// Sequence number.
+    pub fn sequence(&self) -> u32 {
+        self.view().sequence()
+    }
+
+    /// Set the sequence number.
+    pub fn set_sequence(&mut self, sequence: u32) {
+        write_u32be(&mut self.buf[4..8], sequence);
+    }
+
+    /// Acknowledgment number.
+    pub fn ack_number(&self) -> u32 {
+        self.view().ack_number()
+    }
+
+    /// Set the acknowledgment number.
+    pub fn set_ack_number(&mut self, ack: u32) {
+        write_u32be(&mut self.buf[8..12], ack);
+    }
+
+    /// TCP flags byte.
+    pub fn flags(&self) -> u8 {
+        self.view().flags()
+    }
+
+    /// Set the TCP flags byte.
+    pub fn set_flags(&mut self, flags: u8) {
+        self.buf[13] = flags;
+    }
+
+    /// Set or clear the FIN flag.
+    pub fn set_fin(&mut self, on: bool) {
+        set_flag(&mut self.buf[13], FLAG_FIN, on);
+    }
+
+    /// Set or clear the SYN flag.
+    pub fn set_syn(&mut self, on: bool) {
+        set_flag(&mut self.buf[13], FLAG_SYN, on);
+    }
+
+    /// Set or clear the RST flag.
+    pub fn set_rst(&mut self, on: bool) {
+        set_flag(&mut self.buf[13], FLAG_RST, on);
+    }
+
+    /// Set or clear the PSH flag.
+    pub fn set_psh(&mut self, on: bool) {
+        set_flag(&mut self.buf[13], FLAG_PSH, on);
+    }
+
+    /// Set or clear the ACK flag.
+    pub fn set_ack(&mut self, on: bool) {
+        set_flag(&mut self.buf[13], FLAG_ACK, on);
+    }
+
+    /// Set or clear the URG flag.
+    pub fn set_urg(&mut self, on: bool) {
+        set_flag(&mut self.buf[13], FLAG_URG, on);
+    }
+
+    /// Window size.
+    pub fn window(&self) -> u16 {
+        self.view().window()
+    }
+
+    /// Set the window size.
+    pub fn set_window(&mut self, window: u16) {
+        write_u16be(&mut self.buf[14..16], window);
+    }
+
+    /// Checksum.
+    pub fn checksum(&self) -> u16 {
+        self.view().checksum()
+    }
+
+    /// Set the checksum directly.
+    pub fn set_checksum(&mut self, checksum: u16) {
+        write_u16be(&mut self.buf[16..18], checksum);
+    }
+
+    /// Urgent pointer.
+    pub fn urgent_pointer(&self) -> u16 {
+        self.view().urgent_pointer()
+    }
+
+    /// Set the urgent pointer.
+    pub fn set_urgent_pointer(&mut self, pointer: u16) {
+        write_u16be(&mut self.buf[18..20], pointer);
+    }
+
+    /// Mutable TCP options bytes.
+    pub fn options_mut(&mut self) -> &mut [u8] {
+        let offset = self.view().header_length();
+        &mut self.buf[TCP_MIN_HEADER_LEN..offset]
+    }
+
+    /// Recompute the TCP checksum with an IPv4 pseudo-header.
+    pub fn update_checksum(&mut self, src: Ipv4Addr, dst: Ipv4Addr) {
+        seal_transport_checksum(
+            self.buf,
+            16,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Tcp.into(),
+        );
+    }
+}
+
+fn set_flag(flags: &mut u8, mask: u8, on: bool) {
+    if on {
+        *flags |= mask;
+    } else {
+        *flags &= !mask;
+    }
+}

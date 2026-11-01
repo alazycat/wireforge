@@ -110,6 +110,91 @@ pub trait FromPacket: Packet {
     fn from_packet(&self) -> Self::T;
 }
 
+/// Generate the common `Mutable*Packet` boilerplate.
+///
+/// The invoking module must define an inherent `fn payload_offset(&self) -> usize`.
+#[macro_export]
+macro_rules! impl_mutable_packet {
+    ($name:ident, $min_len:expr) => {
+        /// Mutable view over an existing packet buffer.
+        #[derive(Debug)]
+        pub struct $name<'a> {
+            buf: &'a mut [u8],
+        }
+
+        impl<'a> $name<'a> {
+            /// Create a mutable view if `buf` is long enough.
+            pub fn new(buf: &'a mut [u8]) -> Option<Self> {
+                if buf.len() < $min_len {
+                    None
+                } else {
+                    Some(Self { buf })
+                }
+            }
+
+            /// Immutable bytes of the packet.
+            pub fn as_bytes(&self) -> &[u8] {
+                self.buf
+            }
+
+            /// Mutable bytes of the packet.
+            pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+                self.buf
+            }
+
+            /// Payload bytes after the protocol header.
+            pub fn payload(&self) -> &[u8] {
+                let offset = self.payload_offset();
+                &self.buf[offset..]
+            }
+
+            /// Mutable payload bytes after the protocol header.
+            pub fn payload_mut(&mut self) -> &mut [u8] {
+                let offset = self.payload_offset();
+                &mut self.buf[offset..]
+            }
+
+            /// Copy `data` into the payload if it fits in the existing buffer.
+            ///
+            /// This does not update length fields such as IPv4 total length or
+            /// the UDP length; callers must do that separately when needed.
+            pub fn set_payload(&mut self, data: &[u8]) -> Result<(), $crate::BuildError> {
+                let payload = self.payload_mut();
+                if data.len() > payload.len() {
+                    return Err($crate::BuildError::PayloadTooLarge {
+                        max: payload.len(),
+                        actual: data.len(),
+                    });
+                }
+                payload[..data.len()].copy_from_slice(data);
+                Ok(())
+            }
+        }
+
+        impl<'a> $crate::Packet for $name<'a> {
+            fn packet(&self) -> &[u8] {
+                self.buf
+            }
+
+            fn payload(&self) -> &[u8] {
+                let offset = self.payload_offset();
+                &self.buf[offset..]
+            }
+        }
+
+        impl<'a> $crate::MutablePacket for $name<'a> {
+            fn packet_mut(&mut self) -> &mut [u8] {
+                self.buf
+            }
+
+            fn payload_mut(&mut self) -> &mut [u8] {
+                let offset = self.payload_offset();
+                &mut self.buf[offset..]
+            }
+        }
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Implementations for the core protocol parsers
 // ---------------------------------------------------------------------------

@@ -5,7 +5,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::types::EtherType;
-use crate::util::{read_u16be, read_u32be, seal_internet_checksum, write_u16be};
+use crate::util::{
+    read_u16be, read_u32be, seal_internet_checksum, write_u16be, write_u32be, BuildError,
+};
 
 pub const GRE_MIN_LEN: usize = 4;
 
@@ -389,5 +391,197 @@ mod tests {
             .sequence(1)
             .build();
         assert_eq!(GrePacket::new(&with_key_seq).unwrap().header_length(), 12);
+    }
+}
+
+crate::impl_mutable_packet!(MutableGrePacket, GRE_MIN_LEN);
+
+impl<'a> MutableGrePacket<'a> {
+    fn view(&self) -> GrePacket<'_> {
+        GrePacket::new(&*self.buf).expect("validated in MutableGrePacket::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        self.view().header_length()
+    }
+
+    /// GRE header length in bytes.
+    pub fn header_length(&self) -> usize {
+        self.view().header_length()
+    }
+
+    /// Raw flags/protocol word.
+    pub fn flags(&self) -> u16 {
+        self.view().flags()
+    }
+
+    /// Whether the checksum field is present.
+    pub fn checksum_present(&self) -> bool {
+        self.view().checksum_present()
+    }
+
+    /// Whether the routing field is present.
+    pub fn routing_present(&self) -> bool {
+        self.view().routing_present()
+    }
+
+    /// Whether the key field is present.
+    pub fn key_present(&self) -> bool {
+        self.view().key_present()
+    }
+
+    /// Whether the sequence field is present.
+    pub fn sequence_present(&self) -> bool {
+        self.view().sequence_present()
+    }
+
+    /// Strict source route bit.
+    pub fn strict_source_route(&self) -> bool {
+        self.view().strict_source_route()
+    }
+
+    /// Recursion control bits.
+    pub fn recursion_control(&self) -> u8 {
+        self.view().recursion_control()
+    }
+
+    /// GRE version.
+    pub fn version(&self) -> u8 {
+        self.view().version()
+    }
+
+    /// Set the GRE version.
+    pub fn set_version(&mut self, version: u8) {
+        let flags = read_u16be(&self.buf[..2]);
+        write_u16be(
+            &mut self.buf[..2],
+            (flags & !0x0007) | (version as u16 & 0x7),
+        );
+    }
+
+    /// Set the recursion control bits.
+    pub fn set_recursion_control(&mut self, recursion: u8) {
+        let flags = read_u16be(&self.buf[..2]);
+        write_u16be(
+            &mut self.buf[..2],
+            (flags & !0x0700) | ((recursion as u16 & 0x7) << 8),
+        );
+    }
+
+    /// Encapsulated protocol type.
+    pub fn protocol_type(&self) -> EtherType {
+        self.view().protocol_type()
+    }
+
+    /// Set the encapsulated protocol type.
+    pub fn set_protocol_type(&mut self, protocol_type: EtherType) {
+        write_u16be(&mut self.buf[2..4], protocol_type.into());
+    }
+
+    /// Optional GRE checksum.
+    pub fn checksum(&self) -> Option<u16> {
+        self.view().checksum()
+    }
+
+    /// Set the GRE checksum.
+    pub fn set_checksum(&mut self, checksum: u16) -> Result<(), BuildError> {
+        if !self.checksum_present() {
+            return Err(BuildError::InvalidField {
+                field: "checksum",
+                reason: "GRE checksum bit is not set",
+            });
+        }
+        write_u16be(&mut self.buf[4..6], checksum);
+        Ok(())
+    }
+
+    /// Optional GRE key.
+    pub fn key(&self) -> Option<u32> {
+        self.view().key()
+    }
+
+    /// Set the GRE key.
+    pub fn set_key(&mut self, key: u32) -> Result<(), BuildError> {
+        if !self.key_present() {
+            return Err(BuildError::InvalidField {
+                field: "key",
+                reason: "GRE key bit is not set",
+            });
+        }
+        let offset = GRE_MIN_LEN + if self.checksum_present() { 4 } else { 0 };
+        if offset + 4 > self.buf.len() {
+            return Err(BuildError::InvalidField {
+                field: "key",
+                reason: "buffer is too short for the GRE key",
+            });
+        }
+        write_u32be(&mut self.buf[offset..offset + 4], key);
+        Ok(())
+    }
+
+    /// Optional GRE sequence number.
+    pub fn sequence(&self) -> Option<u32> {
+        self.view().sequence()
+    }
+
+    /// Set the GRE sequence number.
+    pub fn set_sequence(&mut self, sequence: u32) -> Result<(), BuildError> {
+        if !self.sequence_present() {
+            return Err(BuildError::InvalidField {
+                field: "sequence",
+                reason: "GRE sequence bit is not set",
+            });
+        }
+        let mut offset = GRE_MIN_LEN;
+        if self.checksum_present() {
+            offset += 4;
+        }
+        if self.key_present() {
+            offset += 4;
+        }
+        if offset + 4 > self.buf.len() {
+            return Err(BuildError::InvalidField {
+                field: "sequence",
+                reason: "buffer is too short for the GRE sequence number",
+            });
+        }
+        write_u32be(&mut self.buf[offset..offset + 4], sequence);
+        Ok(())
+    }
+
+    /// Optional routing field.
+    pub fn routing(&self) -> Option<&[u8]> {
+        if !self.routing_present() {
+            return None;
+        }
+        let mut offset = GRE_MIN_LEN;
+        if self.checksum_present() {
+            offset += 4;
+        }
+        if self.key_present() {
+            offset += 4;
+        }
+        if self.sequence_present() {
+            offset += 4;
+        }
+        if offset + 2 <= self.buf.len() {
+            let len = read_u16be(&self.buf[offset..offset + 2]) as usize;
+            let end = (offset + len).min(self.buf.len());
+            Some(&self.buf[offset..end])
+        } else {
+            None
+        }
+    }
+
+    /// Recompute the GRE checksum in place when the checksum bit is set.
+    pub fn update_checksum(&mut self) -> Result<(), BuildError> {
+        if !self.checksum_present() {
+            return Err(BuildError::InvalidField {
+                field: "checksum",
+                reason: "GRE checksum bit is not set",
+            });
+        }
+        seal_internet_checksum(self.buf, 4);
+        Ok(())
     }
 }

@@ -190,3 +190,55 @@ mod tests {
         assert_eq!(pkt.ethertype(), EtherType::Arp);
     }
 }
+
+crate::impl_mutable_packet!(MutableEthernetPacket, ETHER_HEADER_LEN);
+
+impl<'a> MutableEthernetPacket<'a> {
+    fn view(&self) -> EthernetPacket<'_> {
+        EthernetPacket::new(&*self.buf).expect("validated in MutableEthernetPacket::new")
+    }
+
+    fn payload_offset(&self) -> usize {
+        ETHER_HEADER_LEN
+    }
+
+    /// Destination MAC address.
+    pub fn dst_mac(&self) -> [u8; 6] {
+        self.view().dst_mac()
+    }
+
+    /// Set the destination MAC address in place.
+    pub fn set_dst_mac(&mut self, mac: [u8; 6]) {
+        self.buf[..6].copy_from_slice(&mac);
+    }
+
+    /// Source MAC address.
+    pub fn src_mac(&self) -> [u8; 6] {
+        self.view().src_mac()
+    }
+
+    /// Set the source MAC address in place.
+    pub fn set_src_mac(&mut self, mac: [u8; 6]) {
+        self.buf[6..12].copy_from_slice(&mac);
+    }
+
+    /// Frame EtherType.
+    pub fn ethertype(&self) -> EtherType {
+        self.view().ethertype()
+    }
+
+    /// Set the EtherType in place.
+    pub fn set_ethertype(&mut self, ethertype: EtherType) {
+        write_u16be(&mut self.buf[12..14], ethertype.into());
+    }
+
+    /// Raw EtherType value.
+    pub fn raw_ethertype(&self) -> u16 {
+        self.view().raw_ethertype()
+    }
+
+    /// Set the raw EtherType value in place.
+    pub fn set_raw_ethertype(&mut self, ethertype: u16) {
+        write_u16be(&mut self.buf[12..14], ethertype);
+    }
+}
