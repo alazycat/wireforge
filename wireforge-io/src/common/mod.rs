@@ -8,7 +8,7 @@ use std::time::Duration;
 ///
 /// `SO_RCVTIMEO` surfaces as `EAGAIN`/`EWOULDBLOCK` on Unix, not as a
 /// dedicated timeout error, so callers must translate it explicitly.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "linux")]
 pub fn recv_error(err: std::io::Error) -> crate::error::IoError {
     match err.kind() {
         std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => {
