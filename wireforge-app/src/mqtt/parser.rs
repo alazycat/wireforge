@@ -87,54 +87,30 @@ impl<'a> MqttPacket<'a> {
                 if vh.len() < 6 {
                     return 0;
                 }
-                let plen = u16::from_be_bytes([vh[0], vh[1]]) as usize;
-                let mut pos = 2 + plen; // protocol name
+                let protocol_name_len = u16::from_be_bytes([vh[0], vh[1]]) as usize;
+                let mut pos = 2 + protocol_name_len;
                 if pos + 4 > vh.len() {
                     return pos;
                 }
-                pos += 1; // protocol level
-                let flags = vh[pos];
-                pos += 1; // connect flags
-                pos += 2; // keep_alive
-                          // MQTT 5.0 properties
-                if vh[pos - 4] == 5 {
-                    // protocol level 5
-                    if let Some((_, plen)) = read_remaining_length(&vh[pos..]) {
-                        pos += plen;
-                    }
+                let protocol_level = vh[pos];
+                let flags = vh[pos + 1];
+                pos += 4; // protocol level, connect flags, keep_alive
+                if protocol_level == 5 {
+                    pos = skip_remaining_length(vh, pos);
                 }
-                // client_id
-                if pos + 2 > vh.len() {
-                    return pos;
-                }
-                let cid_len = u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize;
-                pos += 2 + cid_len;
-                // will
+                pos = skip_length_prefixed(vh, pos); // client_id
                 if flags & 0x04 != 0 && pos + 2 <= vh.len() {
-                    // MQTT 5.0: will properties
-                    if vh[2 + plen] == 5 {
-                        if let Some((_, plen)) = read_remaining_length(&vh[pos..]) {
-                            pos += plen;
-                        }
+                    if protocol_level == 5 {
+                        pos = skip_remaining_length(vh, pos); // will properties
                     }
-                    if pos + 2 <= vh.len() {
-                        let wt_len = u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize;
-                        pos += 2 + wt_len;
-                        if pos + 2 <= vh.len() {
-                            let wm_len = u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize;
-                            pos += 2 + wm_len;
-                        }
-                    }
+                    pos = skip_length_prefixed(vh, pos); // will topic
+                    pos = skip_length_prefixed(vh, pos); // will message
                 }
-                // username
-                if flags & 0x80 != 0 && pos + 2 <= vh.len() {
-                    let ulen = u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize;
-                    pos += 2 + ulen;
+                if flags & 0x80 != 0 {
+                    pos = skip_length_prefixed(vh, pos); // username
                 }
-                // password
-                if flags & 0x40 != 0 && pos + 2 <= vh.len() {
-                    let plen = u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize;
-                    pos += 2 + plen;
+                if flags & 0x40 != 0 {
+                    pos = skip_length_prefixed(vh, pos); // password
                 }
                 pos
             }
@@ -332,6 +308,24 @@ impl<'a> MqttPacket<'a> {
                 data: vh,
             },
         }
+    }
+}
+
+/// Skip a 2-byte length-prefixed field at `pos`.
+///
+/// Returns `pos` unchanged when the length prefix itself is missing.
+fn skip_length_prefixed(buf: &[u8], pos: usize) -> usize {
+    match buf.get(pos..pos + 2) {
+        Some(prefix) => pos + 2 + u16::from_be_bytes([prefix[0], prefix[1]]) as usize,
+        None => pos,
+    }
+}
+
+/// Skip an MQTT variable-length integer at `pos`.
+fn skip_remaining_length(buf: &[u8], pos: usize) -> usize {
+    match buf.get(pos..).and_then(read_remaining_length) {
+        Some((_, len)) => pos + len,
+        None => pos,
     }
 }
 
