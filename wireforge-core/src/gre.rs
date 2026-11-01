@@ -159,12 +159,12 @@ impl<'a> GrePacket<'a> {
 
     #[inline]
     pub fn header_length(&self) -> usize {
-        self.option_offset()
+        self.option_offset().min(self.buf.len())
     }
 
     #[inline]
     pub fn payload(&self) -> &'a [u8] {
-        &self.buf[self.option_offset()..]
+        &self.buf[self.option_offset().min(self.buf.len())..]
     }
 }
 
@@ -391,6 +391,28 @@ mod tests {
             .sequence(1)
             .build();
         assert_eq!(GrePacket::new(&with_key_seq).unwrap().header_length(), 12);
+    }
+
+    /// Regression test (found by wireforge-fuzz): a routing length that
+    /// exceeds the buffer must not push `payload()`/`header_length()` out
+    /// of bounds.
+    #[test]
+    fn oversized_routing_length_is_clamped() {
+        // Checksum + routing present (0xC000), routing length = 0xFFFF.
+        let buf: &[u8] = &[
+            0xc0, 0x00, // flags: checksum + routing
+            0xbe, 0xef, // protocol type
+            0x00, 0x00, // checksum
+            0x00, 0x00, // checksum offset
+            0xff, 0xff, // routing length (bogus, > buffer)
+            0x01, 0x02, // trailing bytes
+        ];
+        let pkt = GrePacket::new(buf).unwrap();
+        // routing() yields the raw routing bytes incl. the 2-byte length
+        // field, clamped to the end of the buffer.
+        assert_eq!(pkt.routing().unwrap().len(), 4);
+        assert_eq!(pkt.header_length(), buf.len());
+        assert!(pkt.payload().is_empty());
     }
 }
 
