@@ -48,6 +48,34 @@ packet_from!(Udp, UdpPacket<'a>);
 packet_from!(Icmp, IcmpPacket<'a>);
 packet_from!(Icmpv6, Icmpv6Packet<'a>);
 
+impl<'a> wireforge_core::Packet for Packet<'a> {
+    fn packet(&self) -> &[u8] {
+        match self {
+            Packet::Ethernet(packet) => wireforge_core::Packet::packet(packet),
+            Packet::Arp(packet) => wireforge_core::Packet::packet(packet),
+            Packet::Ipv4(packet) => wireforge_core::Packet::packet(packet),
+            Packet::Ipv6(packet) => wireforge_core::Packet::packet(packet),
+            Packet::Tcp(packet) => wireforge_core::Packet::packet(packet),
+            Packet::Udp(packet) => wireforge_core::Packet::packet(packet),
+            Packet::Icmp(packet) => wireforge_core::Packet::packet(packet),
+            Packet::Icmpv6(packet) => wireforge_core::Packet::packet(packet),
+        }
+    }
+
+    fn payload(&self) -> &[u8] {
+        match self {
+            Packet::Ethernet(packet) => wireforge_core::Packet::payload(packet),
+            Packet::Arp(packet) => wireforge_core::Packet::payload(packet),
+            Packet::Ipv4(packet) => wireforge_core::Packet::payload(packet),
+            Packet::Ipv6(packet) => wireforge_core::Packet::payload(packet),
+            Packet::Tcp(packet) => wireforge_core::Packet::payload(packet),
+            Packet::Udp(packet) => wireforge_core::Packet::payload(packet),
+            Packet::Icmp(packet) => wireforge_core::Packet::payload(packet),
+            Packet::Icmpv6(packet) => wireforge_core::Packet::payload(packet),
+        }
+    }
+}
+
 /// Parse an Ethernet frame and dispatch the encapsulated protocol.
 ///
 /// Returns the parsed `EthernetPacket` and, if the EtherType matches a
@@ -289,6 +317,21 @@ pub fn collect_protocol_stack(pkt: &Packet<'_>) -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    use wireforge_core::{Packet as PacketTrait, PacketSize};
+
+    #[test]
+    fn packet_enum_implements_core_packet_traits() {
+        fn assert_packet<T: PacketTrait + PacketSize>() {}
+        assert_packet::<Packet<'static>>();
+
+        let frame = [0u8; 60];
+        let ethernet = EthernetPacket::new(&frame).expect("valid Ethernet frame");
+        let packet = Packet::Ethernet(ethernet);
+        assert_eq!(PacketTrait::packet(&packet).len(), 60);
+        assert_eq!(PacketTrait::payload(&packet).len(), 46);
+        assert_eq!(packet.packet_size(), 60);
+    }
+
     use super::*;
     use wireforge_core::ipv4::Ipv4PacketBuilder;
     use wireforge_core::udp::UdpPacketBuilder;
