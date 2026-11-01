@@ -136,6 +136,49 @@ fn handle_reports_closed_reader() {
 }
 
 #[test]
+fn build_and_send_writes_each_frame() {
+    let (_reader, writer, handle) = l2_channel();
+
+    writer
+        .build_and_send(3, 60, &mut |buf| {
+            buf[0] = 0xAA;
+            buf[59] = 0xBB;
+        })
+        .expect("build_and_send should succeed");
+
+    for _ in 0..3 {
+        let frame = handle.recv_sent(Duration::from_secs(1)).expect("frame");
+        assert_eq!(frame.len(), 60);
+        assert_eq!(frame[0], 0xAA);
+        assert_eq!(frame[59], 0xBB);
+    }
+    assert!(handle.try_recv_sent().is_none());
+}
+
+#[test]
+fn build_and_send_zero_packets_calls_nothing() {
+    let (_reader, writer, handle) = l2_channel();
+    let mut called = false;
+
+    writer
+        .build_and_send(0, 60, &mut |_buf| called = true)
+        .expect("build_and_send should succeed");
+
+    assert!(!called);
+    assert!(handle.try_recv_sent().is_none());
+}
+
+#[test]
+fn send_to_defaults_to_send() {
+    let (_reader, writer, handle) = l2_channel();
+    let sent = frame(b"send_to");
+
+    let n = writer.send_to(&sent, None).expect("send_to should succeed");
+    assert_eq!(n, sent.len());
+    assert_eq!(handle.recv_sent(Duration::from_secs(1)).unwrap(), sent);
+}
+
+#[test]
 fn try_recv_sent_returns_none_when_empty() {
     let (_reader, _writer, handle) = l2_channel();
     assert!(handle.try_recv_sent().is_none());

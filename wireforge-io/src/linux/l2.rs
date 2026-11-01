@@ -1,12 +1,13 @@
 //! L2 (AF_PACKET) socket I/O — Ethernet frame capture and injection.
 
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::time::Duration;
 
 use socket2::{Domain, Protocol, Socket, Type};
 use wireforge_core::ether::EthernetPacket;
 
 use crate::common;
+use crate::config::{Config, FanoutOption, FanoutType};
 use crate::error::IoError;
 use crate::traits::{L2Reader, L2Writer};
 
@@ -20,6 +21,24 @@ fn eth_p_all_protocol() -> i32 {
     (libc::ETH_P_ALL as u16).to_be() as i32
 }
 
+// PACKET_FANOUT values from linux/if_packet.h.
+const PACKET_FANOUT: libc::c_int = 18;
+const PACKET_FANOUT_FLAG_ROLLOVER: u32 = 0x1000;
+const PACKET_FANOUT_FLAG_DEFRAG: u32 = 0x8000;
+
+fn fanout_type_value(fanout_type: FanoutType) -> u32 {
+    match fanout_type {
+        FanoutType::Hash => 0,
+        FanoutType::LoadBalance => 1,
+        FanoutType::Cpu => 2,
+        FanoutType::Rollover => 3,
+        FanoutType::Random => 4,
+        FanoutType::Queue => 5,
+        FanoutType::Cbpf => 6,
+        FanoutType::Ebpf => 7,
+    }
+}
+
 /// Receiver for raw L2 Ethernet frames via AF_PACKET socket.
 pub struct L2Receiver {
     sock: Socket,
@@ -30,20 +49,70 @@ pub struct L2Receiver {
 impl L2Receiver {
     /// Open an AF_PACKET socket and bind to the given interface.
     pub fn new(ifname: &str) -> Result<Self, IoError> {
-        let sock = Socket::new(
-            Domain::PACKET,
-            Type::RAW,
-            Some(Protocol::from(eth_p_all_protocol())),
-        )?;
+        Self::with_config(ifname, Config::default())
+    }
 
-        // Bind to interface using SO_BINDTODEVICE
-        sock.bind_device(Some(ifname.as_bytes()))?;
+    /// Open an AF_PACKET socket with the given configuration.
+    pub fn with_config(ifname: &str, config: Config) -> Result<Self, IoError> {
+        let sock = match config.socket_fd {
+            Some(fd) => unsafe { Socket::from_raw_fd(fd) },
+            None => {
+                let sock = Socket::new(
+                    Domain::PACKET,
+                    Type::RAW,
+                    Some(Protocol::from(eth_p_all_protocol())),
+                )?;
+                sock.bind_device(Some(ifname.as_bytes()))?;
+                sock
+            }
+        };
 
-        Ok(Self {
+        let mut receiver = Self {
             sock,
-            buf: vec![0u8; 65536],
+            buf: vec![0u8; config.read_buffer_size.max(1)],
             ifname: ifname.to_string(),
-        })
+        };
+
+        if config.read_buffer_size > 0 {
+            receiver
+                .sock
+                .set_recv_buffer_size(config.read_buffer_size)?;
+        }
+        receiver.sock.set_read_timeout(config.read_timeout)?;
+        if config.promiscuous {
+            receiver.set_promiscuous(true)?;
+        }
+        if let Some(fanout) = config.linux_fanout {
+            receiver.set_fanout(fanout)?;
+        }
+        Ok(receiver)
+    }
+
+    /// Join a packet fanout group.
+    fn set_fanout(&self, fanout: FanoutOption) -> Result<(), IoError> {
+        let mut typ = fanout_type_value(fanout.fanout_type);
+        if fanout.defrag {
+            typ |= PACKET_FANOUT_FLAG_DEFRAG;
+        }
+        if fanout.rollover {
+            typ |= PACKET_FANOUT_FLAG_ROLLOVER;
+        }
+        // The kernel expects the group ID in the low 16 bits and the
+        // type/flags in the high 16 bits.
+        let arg: libc::c_uint = fanout.group_id as u32 | (typ << 16);
+        let ret = unsafe {
+            libc::setsockopt(
+                self.sock.as_raw_fd(),
+                libc::SOL_PACKET,
+                PACKET_FANOUT,
+                &arg as *const _ as *const libc::c_void,
+                std::mem::size_of::<libc::c_uint>() as libc::socklen_t,
+            )
+        };
+        if ret < 0 {
+            return Err(IoError::Socket(std::io::Error::last_os_error()));
+        }
+        Ok(())
     }
 
     /// Receive a single Ethernet frame and parse it.
@@ -100,11 +169,23 @@ pub struct L2Sender {
 impl L2Sender {
     /// Open an AF_PACKET socket for sending on the given interface.
     pub fn new(ifname: &str) -> Result<Self, IoError> {
+        Self::with_config(ifname, Config::default())
+    }
+
+    /// Open an AF_PACKET socket with the given configuration.
+    ///
+    /// `config.socket_fd` is ignored: it is only used by receivers.
+    pub fn with_config(ifname: &str, config: Config) -> Result<Self, IoError> {
         let sock = Socket::new(
             Domain::PACKET,
             Type::RAW,
             Some(Protocol::from(eth_p_all_protocol())),
         )?;
+
+        if config.write_buffer_size > 0 {
+            sock.set_send_buffer_size(config.write_buffer_size)?;
+        }
+        sock.set_write_timeout(config.write_timeout)?;
 
         let fd = sock.as_raw_fd();
         let ifindex = unsafe {
