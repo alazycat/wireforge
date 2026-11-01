@@ -1,10 +1,11 @@
 //! Cross-platform utility functions shared by all platform backends.
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::time::Duration;
 
-/// Set socket receive timeout (SO_RCVTIMEO) across platforms.
+/// Set socket receive timeout (SO_RCVTIMEO) on Linux/macOS.
 ///
-/// Linux/macOS use `timeval`, Windows uses `DWORD` (milliseconds).
+/// Uses `timeval`; Windows backends configure `SO_RCVTIMEO` themselves.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[allow(dead_code)]
 pub fn set_socket_timeout(fd: i32, dur: Option<Duration>) -> Result<(), crate::error::IoError> {
@@ -31,12 +32,4 @@ pub fn set_socket_timeout(fd: i32, dur: Option<Duration>) -> Result<(), crate::e
         }
     }
     Ok(())
-}
-
-#[cfg(target_os = "windows")]
-#[allow(dead_code)]
-pub fn set_socket_timeout(_fd: i32, _dur: Option<Duration>) -> Result<(), crate::error::IoError> {
-    // Windows uses setsockopt with DWORD timeout in milliseconds.
-    // Placeholder until Issue #32 implements Windows L3.
-    Err(crate::error::IoError::UnsupportedPlatform)
 }
