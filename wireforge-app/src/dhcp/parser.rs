@@ -210,19 +210,19 @@ impl<'a> Iterator for DhcpOptionIter<'a> {
 
 fn parse_option(code: u8, data: &[u8]) -> DhcpOption {
     match code {
-        1 => DhcpOption::SubnetMask(ip4(&data[..4.min(data.len())])),
+        1 if data.len() >= 4 => DhcpOption::SubnetMask(ip4(&data[..4])),
         3 => DhcpOption::Router(parse_ip_list(data)),
         6 => DhcpOption::DnsServer(parse_ip_list(data)),
         12 => DhcpOption::HostName(String::from_utf8_lossy(data).into_owned()),
         15 => DhcpOption::DomainName(String::from_utf8_lossy(data).into_owned()),
-        28 => DhcpOption::BroadcastAddr(ip4(&data[..4.min(data.len())])),
-        50 => DhcpOption::RequestedIp(ip4(&data[..4.min(data.len())])),
-        51 => DhcpOption::LeaseTime(read_u32be(&data[..4.min(data.len())])),
+        28 if data.len() >= 4 => DhcpOption::BroadcastAddr(ip4(&data[..4])),
+        50 if data.len() >= 4 => DhcpOption::RequestedIp(ip4(&data[..4])),
+        51 if data.len() >= 4 => DhcpOption::LeaseTime(read_u32be(&data[..4])),
         53 => DhcpOption::MessageType(DhcpMessageType::from(data.first().copied().unwrap_or(0))),
-        54 => DhcpOption::ServerId(ip4(&data[..4.min(data.len())])),
+        54 if data.len() >= 4 => DhcpOption::ServerId(ip4(&data[..4])),
         55 => DhcpOption::ParameterList(data.to_vec()),
-        58 => DhcpOption::RenewalTime(read_u32be(&data[..4.min(data.len())])),
-        59 => DhcpOption::RebindingTime(read_u32be(&data[..4.min(data.len())])),
+        58 if data.len() >= 4 => DhcpOption::RenewalTime(read_u32be(&data[..4])),
+        59 if data.len() >= 4 => DhcpOption::RebindingTime(read_u32be(&data[..4])),
         _ => DhcpOption::Unknown {
             code,
             data: data.to_vec(),
@@ -267,6 +267,19 @@ mod tests {
         let mut data = vec![0u8; 240];
         data[236..240].copy_from_slice(&0xDEADBEEFu32.to_be_bytes());
         assert!(DhcpPacket::new(&data).is_none());
+    }
+
+    #[test]
+    fn short_fixed_length_options_are_unknown() {
+        let mut data = vec![0u8; DHCP_MIN_LEN];
+        data[236..240].copy_from_slice(&DHCP_MAGIC_COOKIE.to_be_bytes());
+        // Option 1 has 2 bytes (needs 4); option 51 has 3 bytes (needs 4).
+        data.extend_from_slice(&[1, 2, 0xAA, 0xBB, 51, 3, 0, 0, 1, 255]);
+
+        let pkt = DhcpPacket::new(&data).unwrap();
+        let opts: Vec<_> = pkt.options().collect();
+        assert!(matches!(opts[0], DhcpOption::Unknown { code: 1, .. }));
+        assert!(matches!(opts[1], DhcpOption::Unknown { code: 51, .. }));
     }
 
     #[test]
