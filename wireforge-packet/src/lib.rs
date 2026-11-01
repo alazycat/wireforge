@@ -27,38 +27,26 @@ pub enum Packet<'a> {
     Icmpv6(Icmpv6Packet<'a>),
 }
 
+/// Generate a `From` impl that wraps a concrete packet type in [`Packet`].
+macro_rules! packet_from {
+    ($variant:ident, $type:ty) => {
+        impl<'a> From<$type> for Packet<'a> {
+            fn from(p: $type) -> Self {
+                Packet::$variant(p)
+            }
+        }
+    };
+}
+
 // From impls for easy conversion
-impl<'a> From<EthernetPacket<'a>> for Packet<'a> {
-    fn from(p: EthernetPacket<'a>) -> Self { Packet::Ethernet(p) }
-}
-
-impl<'a> From<ArpPacket<'a>> for Packet<'a> {
-    fn from(p: ArpPacket<'a>) -> Self { Packet::Arp(p) }
-}
-
-impl<'a> From<Ipv4Packet<'a>> for Packet<'a> {
-    fn from(p: Ipv4Packet<'a>) -> Self { Packet::Ipv4(p) }
-}
-
-impl<'a> From<Ipv6Packet<'a>> for Packet<'a> {
-    fn from(p: Ipv6Packet<'a>) -> Self { Packet::Ipv6(p) }
-}
-
-impl<'a> From<TcpPacket<'a>> for Packet<'a> {
-    fn from(p: TcpPacket<'a>) -> Self { Packet::Tcp(p) }
-}
-
-impl<'a> From<UdpPacket<'a>> for Packet<'a> {
-    fn from(p: UdpPacket<'a>) -> Self { Packet::Udp(p) }
-}
-
-impl<'a> From<IcmpPacket<'a>> for Packet<'a> {
-    fn from(p: IcmpPacket<'a>) -> Self { Packet::Icmp(p) }
-}
-
-impl<'a> From<Icmpv6Packet<'a>> for Packet<'a> {
-    fn from(p: Icmpv6Packet<'a>) -> Self { Packet::Icmpv6(p) }
-}
+packet_from!(Ethernet, EthernetPacket<'a>);
+packet_from!(Arp, ArpPacket<'a>);
+packet_from!(Ipv4, Ipv4Packet<'a>);
+packet_from!(Ipv6, Ipv6Packet<'a>);
+packet_from!(Tcp, TcpPacket<'a>);
+packet_from!(Udp, UdpPacket<'a>);
+packet_from!(Icmp, IcmpPacket<'a>);
+packet_from!(Icmpv6, Icmpv6Packet<'a>);
 
 /// Parse an Ethernet frame and dispatch the encapsulated protocol.
 ///
