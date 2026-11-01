@@ -1,6 +1,7 @@
 //! Modbus TCP packet parser.
 
 use super::types::ModbusFunction;
+use wireforge_core::util::read_u16be;
 
 const MBAP_HEADER_LEN: usize = 7;
 
@@ -19,13 +20,13 @@ impl<'a> ModbusTcpPacket<'a> {
     }
 
     pub fn transaction_id(&self) -> u16 {
-        u16::from_be_bytes([self.buf[0], self.buf[1]])
+        read_u16be(&self.buf[0..2])
     }
     pub fn protocol_id(&self) -> u16 {
-        u16::from_be_bytes([self.buf[2], self.buf[3]])
+        read_u16be(&self.buf[2..4])
     }
     pub fn length(&self) -> u16 {
-        u16::from_be_bytes([self.buf[4], self.buf[5]])
+        read_u16be(&self.buf[4..6])
     }
     pub fn unit_id(&self) -> u8 {
         self.buf[6]
@@ -49,49 +50,39 @@ impl<'a> ModbusTcpPacket<'a> {
         let data = &pdu[1..];
         match fc {
             1 => ModbusFunction::ReadCoils {
-                starting_address: self._u16(data, 0),
-                quantity: self._u16(data, 2),
+                starting_address: read_u16_at(data, 0),
+                quantity: read_u16_at(data, 2),
             },
             2 => ModbusFunction::ReadDiscreteInputs {
-                starting_address: self._u16(data, 0),
-                quantity: self._u16(data, 2),
+                starting_address: read_u16_at(data, 0),
+                quantity: read_u16_at(data, 2),
             },
-            3 => {
-                if data.len() >= 4 && data.len() >= 5 + data[2] as usize {
-                    // Response format checked by caller
-                    ModbusFunction::ReadHoldingRegisters {
-                        starting_address: self._u16(data, 0),
-                        quantity: self._u16(data, 2),
-                    }
-                } else {
-                    ModbusFunction::ReadHoldingRegisters {
-                        starting_address: self._u16(data, 0),
-                        quantity: self._u16(data, 2),
-                    }
-                }
-            }
+            3 => ModbusFunction::ReadHoldingRegisters {
+                starting_address: read_u16_at(data, 0),
+                quantity: read_u16_at(data, 2),
+            },
             4 => ModbusFunction::ReadInputRegisters {
-                starting_address: self._u16(data, 0),
-                quantity: self._u16(data, 2),
+                starting_address: read_u16_at(data, 0),
+                quantity: read_u16_at(data, 2),
             },
             5 => ModbusFunction::WriteSingleCoil {
-                output_address: self._u16(data, 0),
+                output_address: read_u16_at(data, 0),
                 value: data.len() >= 3 && data[2] == 0xFF,
             },
             6 => ModbusFunction::WriteSingleRegister {
-                register_address: self._u16(data, 0),
-                value: self._u16(data, 2),
+                register_address: read_u16_at(data, 0),
+                value: read_u16_at(data, 2),
             },
             15 => ModbusFunction::WriteMultipleCoils {
-                starting_address: self._u16(data, 0),
-                quantity: self._u16(data, 2),
-                byte_count: *data.get(4).unwrap_or(&0),
+                starting_address: read_u16_at(data, 0),
+                quantity: read_u16_at(data, 2),
+                byte_count: data.get(4).copied().unwrap_or(0),
                 values: &data[5..],
             },
             16 => ModbusFunction::WriteMultipleRegisters {
-                starting_address: self._u16(data, 0),
-                quantity: self._u16(data, 2),
-                byte_count: *data.get(4).unwrap_or(&0),
+                starting_address: read_u16_at(data, 0),
+                quantity: read_u16_at(data, 2),
+                byte_count: data.get(4).copied().unwrap_or(0),
                 values: &data[5..],
             },
             _ => ModbusFunction::Unknown {
@@ -100,14 +91,11 @@ impl<'a> ModbusTcpPacket<'a> {
             },
         }
     }
+}
 
-    fn _u16(&self, data: &[u8], off: usize) -> u16 {
-        if off + 2 <= data.len() {
-            u16::from_be_bytes([data[off], data[off + 1]])
-        } else {
-            0
-        }
-    }
+/// Read a big-endian u16 at `offset`, returning 0 when the field is truncated.
+fn read_u16_at(data: &[u8], offset: usize) -> u16 {
+    data.get(offset..offset + 2).map(read_u16be).unwrap_or(0)
 }
 
 #[cfg(test)]
