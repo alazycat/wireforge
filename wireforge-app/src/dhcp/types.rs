@@ -31,6 +31,22 @@ impl From<u8> for DhcpMessageType {
     }
 }
 
+impl From<DhcpMessageType> for u8 {
+    fn from(v: DhcpMessageType) -> Self {
+        match v {
+            DhcpMessageType::Discover => 1,
+            DhcpMessageType::Offer => 2,
+            DhcpMessageType::Request => 3,
+            DhcpMessageType::Declined => 4,
+            DhcpMessageType::Ack => 5,
+            DhcpMessageType::Nak => 6,
+            DhcpMessageType::Release => 7,
+            DhcpMessageType::Inform => 8,
+            DhcpMessageType::Unknown(v) => v,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum DhcpOption {
     SubnetMask(Ipv4Addr),

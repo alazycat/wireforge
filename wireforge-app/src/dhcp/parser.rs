@@ -327,6 +327,32 @@ mod tests {
     }
 
     #[test]
+    fn builder_encodes_message_type_and_timers() {
+        let data = DhcpPacketBuilder::new()
+            .add_option(&DhcpOption::MessageType(DhcpMessageType::Discover))
+            .add_option(&DhcpOption::RenewalTime(100))
+            .add_option(&DhcpOption::RebindingTime(200))
+            .add_option(&DhcpOption::Unknown {
+                code: 200,
+                data: vec![1, 2],
+            })
+            .build();
+
+        let pkt = DhcpPacket::new(&data).unwrap();
+        assert_eq!(pkt.message_type(), Some(DhcpMessageType::Discover));
+        let opts: Vec<_> = pkt.options().collect();
+        assert!(opts
+            .iter()
+            .any(|o| matches!(o, DhcpOption::RenewalTime(100))));
+        assert!(opts
+            .iter()
+            .any(|o| matches!(o, DhcpOption::RebindingTime(200))));
+        assert!(opts
+            .iter()
+            .any(|o| matches!(o, DhcpOption::Unknown { code: 200, .. })));
+    }
+
+    #[test]
     fn dhcp_offer_with_options() {
         let server_ip = [192u8, 168, 1, 1];
         let client_ip = [192u8, 168, 1, 100];

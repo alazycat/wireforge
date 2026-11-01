@@ -3,7 +3,7 @@
 use core::net::Ipv4Addr;
 
 use super::parser::DHCP_MIN_LEN;
-use super::types::DhcpOption;
+use super::types::{DhcpMessageType, DhcpOption};
 
 const DHCP_MAGIC_COOKIE: u32 = 0x63825363;
 
@@ -107,10 +107,13 @@ impl DhcpPacketBuilder {
             DhcpOption::BroadcastAddr(ip) => self.push_option(28, &ip.octets()),
             DhcpOption::RequestedIp(ip) => self.push_option(50, &ip.octets()),
             DhcpOption::LeaseTime(t) => self.push_option(51, &t.to_be_bytes()),
+            DhcpOption::MessageType(mt) => self.push_option(53, &[u8::from(*mt)]),
             DhcpOption::ServerId(ip) => self.push_option(54, &ip.octets()),
             DhcpOption::ParameterList(params) => self.push_option(55, params),
+            DhcpOption::RenewalTime(t) => self.push_option(58, &t.to_be_bytes()),
+            DhcpOption::RebindingTime(t) => self.push_option(59, &t.to_be_bytes()),
+            DhcpOption::Unknown { code, data } => self.push_option(*code, data),
             DhcpOption::End => {}
-            _ => {}
         }
         self
     }
