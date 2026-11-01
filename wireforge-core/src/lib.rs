@@ -21,10 +21,12 @@ pub mod icmp;
 pub mod igmp;
 pub mod ipv4;
 pub mod ipv6;
+pub mod packet;
 pub mod tcp;
 pub mod types;
 pub mod udp;
 pub mod util;
 pub mod vlan;
 
+pub use packet::{FromPacket, MutablePacket, Packet, PacketSize};
 pub use util::BuildError;
