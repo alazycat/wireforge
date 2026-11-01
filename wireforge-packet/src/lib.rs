@@ -132,11 +132,15 @@ impl<'a> Packet<'a> {
     /// This is the Composite pattern: each protocol layer can contain
     /// another, forming a recursive tree. Walk the full stack with:
     ///
-    /// ```ignore
-    /// let mut current = Some(packet);
-    /// while let Some(p) = current {
-    ///     println!("{}", p.protocol_name());
-    ///     current = p.inner();
+    /// ```rust,no_run
+    /// use wireforge_packet::Packet;
+    ///
+    /// fn walk(packet: Packet<'_>) {
+    ///     let mut current = Some(packet);
+    ///     while let Some(p) = current {
+    ///         println!("{}", p.protocol_name());
+    ///         current = p.inner();
+    ///     }
     /// }
     /// ```
     pub fn inner(&self) -> Option<Packet<'a>> {
