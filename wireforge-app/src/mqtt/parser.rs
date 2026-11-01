@@ -76,7 +76,7 @@ impl<'a> MqttPacket<'a> {
     }
     pub fn payload(&self) -> &'a [u8] {
         let vh = self.variable_header();
-        let vh_len = self._vh_len();
+        let vh_len = self._vh_len().min(vh.len());
         &vh[vh_len..]
     }
 
@@ -162,10 +162,16 @@ impl<'a> MqttPacket<'a> {
                     };
                 }
                 let plen = u16::from_be_bytes([vh[0], vh[1]]) as usize;
+                let Some(fields) = vh.get(2 + plen..2 + plen + 4) else {
+                    return MqttMessage::Unknown {
+                        packet_type: MqttPacketType::Connect,
+                        data: vh,
+                    };
+                };
                 let proto = str::from_utf8(&vh[2..2 + plen]).unwrap_or("");
-                let level = vh[2 + plen];
-                let flags = vh[3 + plen];
-                let keep_alive = u16::from_be_bytes([vh[4 + plen], vh[5 + plen]]);
+                let level = fields[0];
+                let flags = fields[1];
+                let keep_alive = u16::from_be_bytes([fields[2], fields[3]]);
                 let mut pos = 6 + plen;
                 // MQTT 5 properties
                 let properties = if level == 5 {
@@ -174,68 +180,31 @@ impl<'a> MqttPacket<'a> {
                     vec![]
                 };
                 if level == 5 {
-                    if let Some((_, pl)) = read_remaining_length(&vh[pos..]) {
-                        pos += pl;
-                    }
+                    pos = skip_remaining_length(vh, pos);
                 }
-                // client_id
-                let cid_len = if pos + 2 <= vh.len() {
-                    u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize
-                } else {
-                    0
-                };
-                pos += 2;
-                let client_id = str::from_utf8(&vh[pos..pos + cid_len]).unwrap_or("");
-                pos += cid_len;
+                let client_id = read_length_prefixed(vh, &mut pos)
+                    .and_then(|bytes| str::from_utf8(bytes).ok())
+                    .unwrap_or("");
                 // will
                 let (will_topic, will_message) = if flags & 0x04 != 0 {
-                    let mut wt = None;
-                    let mut wm = None;
                     if level == 5 {
-                        if let Some((_, pl)) = read_remaining_length(&vh[pos..]) {
-                            pos += pl;
-                        }
+                        pos = skip_remaining_length(vh, pos);
                     }
-                    if pos + 2 <= vh.len() {
-                        let wtl = u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize;
-                        pos += 2;
-                        if pos + wtl <= vh.len() {
-                            wt = str::from_utf8(&vh[pos..pos + wtl]).ok();
-                            pos += wtl;
-                        }
-                    }
-                    if pos + 2 <= vh.len() {
-                        let wml = u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize;
-                        pos += 2;
-                        if pos + wml <= vh.len() {
-                            wm = Some(&vh[pos..pos + wml]);
-                            pos += wml;
-                        }
-                    }
-                    (wt, wm)
+                    let will_topic =
+                        read_length_prefixed(vh, &mut pos).and_then(|b| str::from_utf8(b).ok());
+                    let will_message = read_length_prefixed(vh, &mut pos);
+                    (will_topic, will_message)
                 } else {
                     (None, None)
                 };
                 // username/password
                 let username = if flags & 0x80 != 0 {
-                    if pos + 2 <= vh.len() {
-                        let ul = u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize;
-                        pos += 2;
-                        str::from_utf8(&vh[pos..pos + ul]).ok()
-                    } else {
-                        None
-                    }
+                    read_length_prefixed(vh, &mut pos).and_then(|b| str::from_utf8(b).ok())
                 } else {
                     None
                 };
                 let password = if flags & 0x40 != 0 {
-                    if pos + 2 <= vh.len() {
-                        let pl = u16::from_be_bytes([vh[pos], vh[pos + 1]]) as usize;
-                        pos += 2;
-                        Some(&vh[pos..pos + pl])
-                    } else {
-                        None
-                    }
+                    read_length_prefixed(vh, &mut pos)
                 } else {
                     None
                 };
@@ -260,12 +229,22 @@ impl<'a> MqttPacket<'a> {
                     };
                 }
                 let tlen = u16::from_be_bytes([vh[0], vh[1]]) as usize;
-                let topic = str::from_utf8(&vh[2..2 + tlen]).unwrap_or("");
+                let Some(topic_bytes) = vh.get(2..2 + tlen) else {
+                    return MqttMessage::Unknown {
+                        packet_type: MqttPacketType::Publish,
+                        data: vh,
+                    };
+                };
+                let topic = str::from_utf8(topic_bytes).unwrap_or("");
                 let mut pos = 2 + tlen;
-                let packet_id = if self.qos() as u8 > 0 && pos + 2 <= vh.len() {
-                    let id = u16::from_be_bytes([vh[pos], vh[pos + 1]]);
-                    pos += 2;
-                    Some(id)
+                let packet_id = if self.qos() as u8 > 0 {
+                    match vh.get(pos..pos + 2) {
+                        Some(bytes) => {
+                            pos += 2;
+                            Some(u16::from_be_bytes([bytes[0], bytes[1]]))
+                        }
+                        None => None,
+                    }
                 } else {
                     None
                 };
@@ -309,6 +288,16 @@ impl<'a> MqttPacket<'a> {
             },
         }
     }
+}
+
+/// Read a 2-byte length-prefixed field at `*pos`, advancing past it.
+fn read_length_prefixed<'a>(buf: &'a [u8], pos: &mut usize) -> Option<&'a [u8]> {
+    let prefix = buf.get(*pos..*pos + 2)?;
+    let len = u16::from_be_bytes([prefix[0], prefix[1]]) as usize;
+    let end = (*pos + 2).checked_add(len)?;
+    let bytes = buf.get(*pos + 2..end)?;
+    *pos = end;
+    Some(bytes)
 }
 
 /// Skip a 2-byte length-prefixed field at `pos`.
@@ -459,6 +448,60 @@ mod tests {
             }
             _ => panic!("expected Connect"),
         }
+    }
+
+    #[test]
+    fn parse_mqtt_connect_with_will_and_credentials() {
+        // flags: clean_start | will | username | password
+        let mut vh = vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 4, 0xC6];
+        vh.extend_from_slice(&60u16.to_be_bytes());
+        vh.extend_from_slice(&[0x00, 0x03, b'c', b'i', b'd']); // client_id
+        vh.extend_from_slice(&[0x00, 0x02, b'w', b't']); // will topic
+        vh.extend_from_slice(&[0x00, 0x02, b'w', b'm']); // will message
+        vh.extend_from_slice(&[0x00, 0x01, b'u']); // username
+        vh.extend_from_slice(&[0x00, 0x01, b'p']); // password
+
+        let mut data = vec![0x10];
+        data.extend_from_slice(&write_remaining_length(vh.len() as u32));
+        data.extend_from_slice(&vh);
+
+        let pkt = MqttPacket::parse(&data).unwrap();
+        match pkt.message() {
+            MqttMessage::Connect {
+                client_id,
+                will_topic,
+                will_message,
+                username,
+                password,
+                ..
+            } => {
+                assert_eq!(client_id, "cid");
+                assert_eq!(will_topic, Some("wt"));
+                assert_eq!(will_message, Some(&b"wm"[..]));
+                assert_eq!(username, Some("u"));
+                assert_eq!(password, Some(&b"p"[..]));
+            }
+            _ => panic!("expected Connect"),
+        }
+        assert!(pkt.payload().is_empty());
+    }
+
+    #[test]
+    fn truncated_connect_does_not_panic() {
+        // Protocol name length claims 16 bytes, but only 6 remain.
+        let data = [0x10, 0x06, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00];
+        let pkt = MqttPacket::parse(&data).unwrap();
+        assert!(matches!(pkt.message(), MqttMessage::Unknown { .. }));
+        assert!(pkt.payload().is_empty());
+    }
+
+    #[test]
+    fn truncated_publish_does_not_panic() {
+        // Topic length claims 16 bytes, but the variable header is 2 bytes.
+        let data = [0x30, 0x02, 0x00, 0x10];
+        let pkt = MqttPacket::parse(&data).unwrap();
+        assert!(matches!(pkt.message(), MqttMessage::Unknown { .. }));
+        assert!(pkt.payload().is_empty());
     }
 
     #[test]
