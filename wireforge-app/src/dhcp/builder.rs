@@ -3,7 +3,7 @@
 use core::net::Ipv4Addr;
 
 use super::parser::DHCP_MIN_LEN;
-use super::types::{DhcpMessageType, DhcpOption};
+use super::types::DhcpOption;
 
 const DHCP_MAGIC_COOKIE: u32 = 0x63825363;
 
