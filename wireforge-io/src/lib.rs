@@ -26,6 +26,7 @@
 //! `list_interfaces()` does not require elevated privileges.
 
 mod common;
+mod config;
 pub mod dummy;
 mod error;
 pub mod traits;
@@ -39,12 +40,17 @@ pub mod windows;
 
 mod interface;
 
+pub use config::{Config, FanoutOption, FanoutType};
 pub use error::IoError;
 pub use interface::{list_interfaces, Interface};
 
 // Re-export existing concrete types from their new platform homes
 #[cfg(target_os = "linux")]
-pub use linux::{L2Receiver, L2Sender, L3Receiver, L3ReceiverV6, L3Sender, L3SenderV6};
+pub use linux::{channel, L2Receiver, L2Sender, L3Receiver, L3ReceiverV6, L3Sender, L3SenderV6};
+#[cfg(target_os = "macos")]
+pub use macos::channel;
+#[cfg(target_os = "windows")]
+pub use windows::channel;
 
 // Platform-adaptive type aliases — use these in cross-platform code.
 // Each alias resolves to the appropriate platform implementation at compile time.

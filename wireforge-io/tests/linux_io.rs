@@ -16,7 +16,17 @@ use wireforge_core::icmp::Icmpv6PacketBuilder;
 use wireforge_core::ipv6::Ipv6PacketBuilder;
 use wireforge_core::types::IpProtocol;
 use wireforge_io::linux::{L2Receiver, L3Receiver, L3ReceiverV6, L3SenderV6};
-use wireforge_io::IoError;
+use wireforge_io::traits::L2Writer;
+use wireforge_io::{channel, Config, FanoutOption, FanoutType, IoError};
+
+fn eth_frame(payload: &[u8]) -> Vec<u8> {
+    let mut frame = vec![0u8; 14 + payload.len()];
+    frame[0..6].copy_from_slice(&[0xFF; 6]);
+    frame[6..12].copy_from_slice(&[0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
+    frame[12..14].copy_from_slice(&[0x88, 0xB5]);
+    frame[14..].copy_from_slice(payload);
+    frame
+}
 
 #[test]
 #[ignore = "requires root/CAP_NET_RAW to open an AF_PACKET socket"]
@@ -44,6 +54,55 @@ fn l3_opens_icmp_socket_and_times_out() {
         Err(IoError::Timeout) => {}
         Err(e) => panic!("unexpected error: {e}"),
     }
+}
+
+#[test]
+#[ignore = "requires root/CAP_NET_RAW to open an AF_PACKET socket"]
+fn channel_applies_config_and_times_out() {
+    let config = Config {
+        read_timeout: Some(Duration::from_millis(50)),
+        ..Config::default()
+    };
+    let (mut rx, tx) = channel("lo", config).expect("open channel on lo");
+
+    match rx.recv() {
+        Ok(_) | Err(IoError::Timeout) => {}
+        Err(e) => panic!("unexpected error: {e}"),
+    }
+
+    let frame = eth_frame(b"channel");
+    let sent = tx.send(&frame).expect("send should succeed");
+    assert_eq!(sent, frame.len());
+}
+
+#[test]
+#[ignore = "requires root/CAP_NET_RAW to open an AF_PACKET socket"]
+fn channel_build_and_send() {
+    let (_rx, tx) = channel("lo", Config::default()).expect("open channel on lo");
+
+    tx.build_and_send(3, 60, &mut |buf| {
+        buf[0..6].copy_from_slice(&[0xFF; 6]);
+        buf[6..12].copy_from_slice(&[0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
+        buf[12..14].copy_from_slice(&[0x88, 0xB5]);
+    })
+    .expect("batch send should succeed");
+}
+
+#[test]
+#[ignore = "requires root/CAP_NET_RAW to open an AF_PACKET socket"]
+fn channel_joins_fanout_group() {
+    let config = Config {
+        linux_fanout: Some(FanoutOption {
+            group_id: 0x1234,
+            fanout_type: FanoutType::Hash,
+            defrag: false,
+            rollover: false,
+        }),
+        ..Config::default()
+    };
+
+    let (_rx1, _tx1) = channel("lo", config).expect("first fanout channel");
+    let (_rx2, _tx2) = channel("lo", config).expect("second fanout channel");
 }
 
 #[test]

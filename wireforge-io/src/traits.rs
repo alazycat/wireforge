@@ -36,6 +36,33 @@ pub trait L2Reader {
 pub trait L2Writer {
     /// Send raw bytes as an Ethernet frame. Returns the number of bytes sent.
     fn send(&self, packet: &[u8]) -> Result<usize, IoError>;
+
+    /// Build and send `num_packets` frames of `packet_size` bytes.
+    ///
+    /// `func` fills a reusable, freshly zeroed buffer for each packet. The
+    /// default implementation calls [`send`](Self::send) once per packet;
+    /// backends may override this to batch sends.
+    fn build_and_send(
+        &self,
+        num_packets: usize,
+        packet_size: usize,
+        func: &mut dyn FnMut(&mut [u8]),
+    ) -> Result<(), IoError> {
+        let mut buffer = vec![0u8; packet_size];
+        for _ in 0..num_packets {
+            buffer.fill(0);
+            func(&mut buffer);
+            self.send(&buffer)?;
+        }
+        Ok(())
+    }
+
+    /// Send a packet with an optional destination hint.
+    ///
+    /// The default implementation ignores `dst` and calls [`send`](Self::send).
+    fn send_to(&self, packet: &[u8], _dst: Option<&crate::Interface>) -> Result<usize, IoError> {
+        self.send(packet)
+    }
 }
 
 /// Receiver for raw L3 IPv4 packets.
