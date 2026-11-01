@@ -49,6 +49,10 @@ impl Endianness {
 pub enum LinkType {
     Ethernet,
     Raw,
+    /// Linux cooked capture v1 — emitted by `tcpdump -i any`.
+    LinuxSll,
+    /// Linux cooked capture v2 — emitted by newer tcpdump releases.
+    LinuxSll2,
     Unknown(u32),
 }
 
@@ -57,6 +61,8 @@ impl From<u32> for LinkType {
         match v {
             1 => LinkType::Ethernet,
             101 => LinkType::Raw,
+            113 => LinkType::LinuxSll,
+            276 => LinkType::LinuxSll2,
             _ => LinkType::Unknown(v),
         }
     }
@@ -81,4 +87,18 @@ pub enum PcapNgBlock {
         block_type: u32,
         data: Vec<u8>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_type_from_dlt_values() {
+        assert_eq!(LinkType::from(1), LinkType::Ethernet);
+        assert_eq!(LinkType::from(101), LinkType::Raw);
+        assert_eq!(LinkType::from(113), LinkType::LinuxSll);
+        assert_eq!(LinkType::from(276), LinkType::LinuxSll2);
+        assert_eq!(LinkType::from(999), LinkType::Unknown(999));
+    }
 }

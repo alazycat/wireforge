@@ -9,6 +9,8 @@ use wireforge_core::ether::EthernetPacket;
 use wireforge_core::icmp::{IcmpPacket, Icmpv6Packet};
 use wireforge_core::ipv4::Ipv4Packet;
 use wireforge_core::ipv6::Ipv6Packet;
+use wireforge_core::sll::SllPacket;
+use wireforge_core::sll2::Sll2Packet;
 use wireforge_core::tcp::TcpPacket;
 use wireforge_core::types::{EtherType, IpProtocol};
 use wireforge_core::udp::UdpPacket;
@@ -77,19 +79,163 @@ impl<'a> wireforge_core::Packet for Packet<'a> {
     }
 }
 
+/// Dispatch a payload by EtherType to the correct L3 parser.
+fn dispatch_ethertype<'a>(et: EtherType, payload: &'a [u8]) -> Option<Packet<'a>> {
+    match et {
+        EtherType::Arp => ArpPacket::new(payload).map(Packet::Arp),
+        EtherType::Ipv4 => Ipv4Packet::new(payload).map(Packet::Ipv4),
+        EtherType::Ipv6 => Ipv6Packet::new(payload).map(Packet::Ipv6),
+        _ => None,
+    }
+}
+
 /// Parse an Ethernet frame and dispatch the encapsulated protocol.
 ///
 /// Returns the parsed `EthernetPacket` and, if the EtherType matches a
 /// known protocol, the inner `Packet` as well.
 pub fn parse_ethernet_frame(buf: &[u8]) -> Option<(EthernetPacket<'_>, Option<Packet<'_>>)> {
     let eth = EthernetPacket::new(buf)?;
-    let inner = match eth.ethertype() {
-        EtherType::Arp => ArpPacket::new(eth.payload()).map(Packet::Arp),
-        EtherType::Ipv4 => Ipv4Packet::new(eth.payload()).map(Packet::Ipv4),
-        EtherType::Ipv6 => Ipv6Packet::new(eth.payload()).map(Packet::Ipv6),
-        _ => None,
-    };
+    let inner = dispatch_ethertype(eth.ethertype(), eth.payload());
     Some((eth, inner))
+}
+
+/// Parse a Linux cooked capture (SLL) frame and dispatch the encapsulated protocol.
+///
+/// SLL is the link layer emitted by libpcap for cooked sockets — most
+/// notably `tcpdump -i any`. The SLL `protocol` field has the same
+/// semantics as the Ethernet EtherType, so dispatch works identically.
+pub fn parse_sll_frame(buf: &[u8]) -> Option<(SllPacket<'_>, Option<Packet<'_>>)> {
+    let sll = SllPacket::new(buf)?;
+    let inner = dispatch_ethertype(sll.protocol(), sll.payload());
+    Some((sll, inner))
+}
+
+/// Parse a Linux cooked capture v2 (SLL2) frame and dispatch the encapsulated protocol.
+///
+/// SLL2 is the successor of SLL used by newer tcpdump releases; see
+/// [`parse_sll_frame`] for the SLL variant.
+pub fn parse_sll2_frame(buf: &[u8]) -> Option<(Sll2Packet<'_>, Option<Packet<'_>>)> {
+    let sll2 = Sll2Packet::new(buf)?;
+    let inner = dispatch_ethertype(sll2.protocol(), sll2.payload());
+    Some((sll2, inner))
+}
+
+/// pcap link-layer header type (the `DLT_*` value from the pcap file header).
+///
+/// This maps the pcap global-header `network` field to the correct
+/// link-layer parser. Values most relevant to WireForge are named;
+/// everything else falls back to [`LinkType::Other`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum LinkType {
+    /// `DLT_EN10MB` (1) — Ethernet II frames.
+    Ethernet,
+    /// `DLT_RAW` (12; 101 on OpenBSD) — raw IP packets, version detected
+    /// from the IP header nibble.
+    Raw,
+    /// `DLT_LINUX_SLL` (113) — Linux cooked capture v1 (`tcpdump -i any`).
+    LinuxSll,
+    /// `DLT_LINUX_SLL2` (276) — Linux cooked capture v2 (newer tcpdump).
+    LinuxSll2,
+    /// Any other DLT value, held verbatim.
+    Other(i32),
+}
+
+impl LinkType {
+    /// Map a raw pcap `DLT_*` value to a [`LinkType`].
+    pub fn from_dlt(v: i32) -> Self {
+        match v {
+            1 => LinkType::Ethernet,
+            12 | 101 => LinkType::Raw,
+            113 => LinkType::LinuxSll,
+            276 => LinkType::LinuxSll2,
+            other => LinkType::Other(other),
+        }
+    }
+
+    /// The raw pcap `DLT_*` value for this link type.
+    pub fn dlt(self) -> i32 {
+        match self {
+            LinkType::Ethernet => 1,
+            LinkType::Raw => 12,
+            LinkType::LinuxSll => 113,
+            LinkType::LinuxSll2 => 276,
+            LinkType::Other(v) => v,
+        }
+    }
+}
+
+/// A parsed link-layer packet produced by [`parse_link_layer`].
+#[derive(Debug, Clone)]
+pub enum LinkPacket<'a> {
+    Ethernet(EthernetPacket<'a>),
+    Sll(SllPacket<'a>),
+    Sll2(Sll2Packet<'a>),
+    /// Raw IP capture (`DLT_RAW`) — the link layer carries no header of
+    /// its own; the bytes are the IP packet itself.
+    RawIp(&'a [u8]),
+}
+
+/// Parse a link-layer packet of the given pcap link type and dispatch the
+/// encapsulated protocol.
+///
+/// This is the correct entry point when reading pcap files whose global
+/// header `network` field is not `DLT_EN10MB` — e.g. captures created by
+/// `tcpdump -i any` (`DLT_LINUX_SLL` / `DLT_LINUX_SLL2`).
+///
+/// Returns the parsed link-layer packet and, if the encapsulated protocol
+/// matches a known protocol, the inner [`Packet`] as well.
+///
+/// # Examples
+///
+/// ```
+/// use wireforge_core::ipv4::Ipv4PacketBuilder;
+/// use wireforge_core::types::IpProtocol;
+/// use wireforge_core::util::PacketBuilder;
+/// use wireforge_packet::{LinkPacket, LinkType, parse_link_layer};
+///
+/// // An IPv4 packet as it would appear inside a `tcpdump -i any` capture.
+/// let ip = Ipv4PacketBuilder::new()
+///     .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
+///     .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
+///     .protocol(IpProtocol::Tcp)
+///     .ttl(64)
+///     .build();
+///
+/// // SLL header: unicast, Ethernet device, 6-byte sender address, IPv4.
+/// let mut frame = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x06];
+/// frame.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x00]);
+/// frame.extend_from_slice(&[0x08, 0x00]); // EtherType::Ipv4
+/// frame.extend_from_slice(&ip);
+///
+/// let (link, inner) = parse_link_layer(LinkType::LinuxSll, &frame).unwrap();
+/// assert!(matches!(link, LinkPacket::Sll(_)));
+/// assert!(matches!(inner, Some(wireforge_packet::Packet::Ipv4(_))));
+/// ```
+pub fn parse_link_layer<'a>(link: LinkType, buf: &'a [u8]) -> Option<(LinkPacket<'a>, Option<Packet<'a>>)> {
+    match link {
+        LinkType::Ethernet => {
+            let (eth, inner) = parse_ethernet_frame(buf)?;
+            Some((LinkPacket::Ethernet(eth), inner))
+        }
+        LinkType::LinuxSll => {
+            let (sll, inner) = parse_sll_frame(buf)?;
+            Some((LinkPacket::Sll(sll), inner))
+        }
+        LinkType::LinuxSll2 => {
+            let (sll2, inner) = parse_sll2_frame(buf)?;
+            Some((LinkPacket::Sll2(sll2), inner))
+        }
+        LinkType::Raw => {
+            let inner = match buf.first()? >> 4 {
+                4 => Ipv4Packet::new(buf).map(Packet::Ipv4),
+                6 => Ipv6Packet::new(buf).map(Packet::Ipv6),
+                _ => None,
+            };
+            Some((LinkPacket::RawIp(buf), inner))
+        }
+        LinkType::Other(_) => None,
+    }
 }
 
 /// Dispatch the payload of an IPv4 packet to the correct transport-layer parser.
@@ -413,6 +559,110 @@ mod tests {
         let udp = vec![0x12, 0x35, 0x12, 0xB5, 0x00, 0x0C, 0, 0, 0, 0, 0, 0];
         let udp_pkt = UdpPacket::new(&udp).unwrap();
         assert!(parse_udp_vxlan(&udp_pkt).is_none());
+    }
+
+    // -- Linux cooked capture (SLL / SLL2) dispatch tests --
+
+    fn sll_frame(ip_bytes: &[u8]) -> Vec<u8> {
+        let mut frame = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x06]; // unicast, Ethernet, addr len 6
+        frame.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x00]);
+        frame.extend_from_slice(&[0x08, 0x00]); // EtherType::Ipv4
+        frame.extend_from_slice(ip_bytes);
+        frame
+    }
+
+    fn sll2_frame(ip6_bytes: &[u8]) -> Vec<u8> {
+        let mut frame = vec![0x86, 0xDD, 0x00, 0x00]; // protocol: IPv6
+        frame.extend_from_slice(&[0x00, 0x00, 0x00, 0x02]); // ifindex 2
+        frame.extend_from_slice(&[0x00, 0x01]); // arphrd Ethernet
+        frame.push(0x00); // packet type: unicast
+        frame.push(0x00); // address length
+        frame.extend_from_slice(&[0x00; 8]); // address
+        frame.extend_from_slice(ip6_bytes);
+        frame
+    }
+
+    #[test]
+    fn parse_sll_frame_dispatches_ipv4() {
+        let ip_bytes = Ipv4PacketBuilder::new()
+            .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
+            .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
+            .protocol(IpProtocol::Tcp)
+            .ttl(64)
+            .build();
+
+        let frame = sll_frame(&ip_bytes);
+        let (sll, inner) = parse_sll_frame(&frame).unwrap();
+        assert_eq!(sll.protocol(), EtherType::Ipv4);
+        assert!(matches!(inner, Some(Packet::Ipv4(_))));
+    }
+
+    #[test]
+    fn parse_sll2_frame_dispatches_ipv6() {
+        let mut ip6 = vec![0x60u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3A, 0x40];
+        ip6.extend_from_slice(&[0u8; 32]); // src + dst = ::
+
+        let frame = sll2_frame(&ip6);
+        let (sll2, inner) = parse_sll2_frame(&frame).unwrap();
+        assert_eq!(sll2.protocol(), EtherType::Ipv6);
+        assert_eq!(sll2.interface_index(), 2);
+        assert!(matches!(inner, Some(Packet::Ipv6(_))));
+    }
+
+    #[test]
+    fn link_type_dlt_mapping() {
+        assert_eq!(LinkType::from_dlt(1), LinkType::Ethernet);
+        assert_eq!(LinkType::from_dlt(12), LinkType::Raw);
+        assert_eq!(LinkType::from_dlt(101), LinkType::Raw);
+        assert_eq!(LinkType::from_dlt(113), LinkType::LinuxSll);
+        assert_eq!(LinkType::from_dlt(276), LinkType::LinuxSll2);
+        assert_eq!(LinkType::from_dlt(999), LinkType::Other(999));
+        assert_eq!(LinkType::Ethernet.dlt(), 1);
+        assert_eq!(LinkType::LinuxSll.dlt(), 113);
+        assert_eq!(LinkType::LinuxSll2.dlt(), 276);
+    }
+
+    #[test]
+    fn parse_link_layer_sll_like_tcpdump_i_any() {
+        let ip_bytes = Ipv4PacketBuilder::new()
+            .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
+            .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
+            .protocol(IpProtocol::Udp)
+            .ttl(64)
+            .build();
+
+        let frame = sll_frame(&ip_bytes);
+        let (link, inner) = parse_link_layer(LinkType::LinuxSll, &frame).unwrap();
+        assert!(matches!(link, LinkPacket::Sll(_)));
+        assert!(matches!(inner, Some(Packet::Ipv4(_))));
+
+        let mut ip6 = vec![0x60u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3A, 0x40];
+        ip6.extend_from_slice(&[0u8; 32]);
+        let frame = sll2_frame(&ip6);
+        let (link, inner) = parse_link_layer(LinkType::LinuxSll2, &frame).unwrap();
+        assert!(matches!(link, LinkPacket::Sll2(_)));
+        assert!(matches!(inner, Some(Packet::Ipv6(_))));
+    }
+
+    #[test]
+    fn parse_link_layer_ethernet_and_raw() {
+        let ip_bytes = Ipv4PacketBuilder::new()
+            .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
+            .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
+            .protocol(IpProtocol::Tcp)
+            .ttl(64)
+            .build();
+
+        // Ethernet: needs at least a 14-byte header.
+        assert!(parse_link_layer(LinkType::Ethernet, &[0u8; 10]).is_none());
+
+        // Raw: the same bytes parse as an IPv4 packet directly.
+        let (link, inner) = parse_link_layer(LinkType::Raw, &ip_bytes).unwrap();
+        assert!(matches!(link, LinkPacket::RawIp(_)));
+        assert!(matches!(inner, Some(Packet::Ipv4(_))));
+
+        // Unknown DLT → no dispatch.
+        assert!(parse_link_layer(LinkType::Other(777), &ip_bytes).is_none());
     }
 
     #[test]

@@ -14,6 +14,8 @@ impl<W: Write> PcapWriter<W> {
         let net: u32 = match link_type {
             LinkType::Ethernet => 1,
             LinkType::Raw => 101,
+            LinkType::LinuxSll => 113,
+            LinkType::LinuxSll2 => 276,
             LinkType::Unknown(v) => v,
         };
         writer.write_all(&0xa1b2c3d4u32.to_be_bytes())?; // magic

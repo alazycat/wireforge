@@ -22,6 +22,8 @@ pub mod igmp;
 pub mod ipv4;
 pub mod ipv6;
 pub mod packet;
+pub mod sll;
+pub mod sll2;
 pub mod tcp;
 pub mod types;
 pub mod udp;

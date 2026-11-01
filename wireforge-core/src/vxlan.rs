@@ -295,18 +295,19 @@ mod tests {
     #[test]
     fn mutable_vxlan_accessors() {
         let mut packet = VxlanPacketBuilder::new(0x010203).build();
-        let mut mutable = MutableVxlanPacket::new(&mut packet).unwrap();
+        {
+            let mut mutable = MutableVxlanPacket::new(&mut packet).unwrap();
 
-        assert_eq!(mutable.vni(), 0x010203);
-        assert!(mutable.vni_present());
+            assert_eq!(mutable.vni(), 0x010203);
+            assert!(mutable.vni_present());
 
-        mutable.set_vni(0x456789);
-        mutable.set_flags(0x00);
-        mutable.set_reserved2(0x77);
-        assert_eq!(mutable.vni(), 0x456789);
-        assert!(!mutable.vni_present());
-        assert_eq!(mutable.reserved2(), 0x77);
-        drop(mutable);
+            mutable.set_vni(0x456789);
+            mutable.set_flags(0x00);
+            mutable.set_reserved2(0x77);
+            assert_eq!(mutable.vni(), 0x456789);
+            assert!(!mutable.vni_present());
+            assert_eq!(mutable.reserved2(), 0x77);
+        }
 
         let reparsed = VxlanPacket::new(&packet).unwrap();
         assert_eq!(reparsed.vni(), 0x456789);
