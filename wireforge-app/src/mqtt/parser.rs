@@ -310,10 +310,13 @@ fn skip_length_prefixed(buf: &[u8], pos: usize) -> usize {
     }
 }
 
-/// Skip an MQTT variable-length integer at `pos`.
+/// Skip an MQTT length-prefixed block (variable-length prefix plus contents) at `pos`.
 fn skip_remaining_length(buf: &[u8], pos: usize) -> usize {
     match buf.get(pos..).and_then(read_remaining_length) {
-        Some((_, len)) => pos + len,
+        Some((value, prefix_len)) => pos
+            .checked_add(prefix_len)
+            .and_then(|p| p.checked_add(value as usize))
+            .unwrap_or(pos),
         None => pos,
     }
 }
@@ -480,6 +483,38 @@ mod tests {
                 assert_eq!(will_message, Some(&b"wm"[..]));
                 assert_eq!(username, Some("u"));
                 assert_eq!(password, Some(&b"p"[..]));
+            }
+            _ => panic!("expected Connect"),
+        }
+        assert!(pkt.payload().is_empty());
+    }
+
+    #[test]
+    fn parse_mqtt5_connect_with_properties() {
+        // flags: clean_start; MQTT 5 properties: session_expiry_interval=10.
+        let mut vh = vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 5, 0x02];
+        vh.extend_from_slice(&60u16.to_be_bytes());
+        vh.extend_from_slice(&[0x05, 0x11, 0x00, 0x00, 0x00, 0x0A]); // properties
+        vh.extend_from_slice(&[0x00, 0x03, b'c', b'i', b'd']); // client_id
+
+        let mut data = vec![0x10];
+        data.extend_from_slice(&write_remaining_length(vh.len() as u32));
+        data.extend_from_slice(&vh);
+
+        let pkt = MqttPacket::parse(&data).unwrap();
+        match pkt.message() {
+            MqttMessage::Connect {
+                protocol_level,
+                client_id,
+                properties,
+                ..
+            } => {
+                assert_eq!(protocol_level, 5);
+                assert_eq!(client_id, "cid");
+                assert!(matches!(
+                    properties.as_slice(),
+                    [MqttProperty::SessionExpiryInterval(10)]
+                ));
             }
             _ => panic!("expected Connect"),
         }
