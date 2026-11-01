@@ -114,27 +114,15 @@ impl DnsPacketBuilder {
 
     /// Add an answer record (pre-encoded RDATA).
     pub fn add_raw_answer(mut self, name: &str, qtype: DnsType, ttl: u32, rdata: &[u8]) -> Self {
-        let mut entry = encode_name(name);
-        let qt: u16 = qtype.into();
-        entry.extend_from_slice(&qt.to_be_bytes());
-        entry.extend_from_slice(&1u16.to_be_bytes()); // class IN
-        entry.extend_from_slice(&ttl.to_be_bytes());
-        entry.extend_from_slice(&(rdata.len() as u16).to_be_bytes());
-        entry.extend_from_slice(rdata);
-        self.answers.push(entry);
+        self.answers
+            .push(encode_raw_record(name, qtype, ttl, rdata));
         self
     }
 
     /// Add an authority record.
     pub fn add_raw_authority(mut self, name: &str, qtype: DnsType, ttl: u32, rdata: &[u8]) -> Self {
-        let mut entry = encode_name(name);
-        let qt: u16 = qtype.into();
-        entry.extend_from_slice(&qt.to_be_bytes());
-        entry.extend_from_slice(&1u16.to_be_bytes());
-        entry.extend_from_slice(&ttl.to_be_bytes());
-        entry.extend_from_slice(&(rdata.len() as u16).to_be_bytes());
-        entry.extend_from_slice(rdata);
-        self.authorities.push(entry);
+        self.authorities
+            .push(encode_raw_record(name, qtype, ttl, rdata));
         self
     }
 
@@ -146,14 +134,8 @@ impl DnsPacketBuilder {
         ttl: u32,
         rdata: &[u8],
     ) -> Self {
-        let mut entry = encode_name(name);
-        let qt: u16 = qtype.into();
-        entry.extend_from_slice(&qt.to_be_bytes());
-        entry.extend_from_slice(&1u16.to_be_bytes());
-        entry.extend_from_slice(&ttl.to_be_bytes());
-        entry.extend_from_slice(&(rdata.len() as u16).to_be_bytes());
-        entry.extend_from_slice(rdata);
-        self.additionals.push(entry);
+        self.additionals
+            .push(encode_raw_record(name, qtype, ttl, rdata));
         self
     }
 
@@ -179,4 +161,16 @@ impl DnsPacketBuilder {
         }
         packet
     }
+}
+
+/// Encode a resource record with pre-encoded RDATA and class IN.
+fn encode_raw_record(name: &str, qtype: DnsType, ttl: u32, rdata: &[u8]) -> Vec<u8> {
+    let mut entry = encode_name(name);
+    let qt: u16 = qtype.into();
+    entry.extend_from_slice(&qt.to_be_bytes());
+    entry.extend_from_slice(&1u16.to_be_bytes()); // class IN
+    entry.extend_from_slice(&ttl.to_be_bytes());
+    entry.extend_from_slice(&(rdata.len() as u16).to_be_bytes());
+    entry.extend_from_slice(rdata);
+    entry
 }
