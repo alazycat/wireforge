@@ -6,14 +6,6 @@ use std::time::Duration;
 use super::types::{Endianness, LinkType, PcapHeader};
 use super::PacketCaptureReader;
 
-#[inline]
-fn read_u32(buf: &[u8], endian: Endianness) -> u32 {
-    match endian {
-        Endianness::Big => u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
-        Endianness::Little => u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
-    }
-}
-
 pub struct PcapReader<R: Read> {
     reader: R,
     header: PcapHeader,
@@ -35,28 +27,14 @@ impl<R: Read> PcapReader<R> {
                 ))
             }
         };
-        // Swap bytes if needed
-        let read_u32 = |off: usize| -> u32 {
-            let b = &hdr_buf[off..off + 4];
-            match endian {
-                Endianness::Big => u32::from_be_bytes([b[0], b[1], b[2], b[3]]),
-                Endianness::Little => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
-            }
-        };
-        let read_u16 = |off: usize| -> u16 {
-            let b = &hdr_buf[off..off + 2];
-            match endian {
-                Endianness::Big => u16::from_be_bytes([b[0], b[1]]),
-                Endianness::Little => u16::from_le_bytes([b[0], b[1]]),
-            }
-        };
+        let read_u32 = |off: usize| endian.read_u32(&hdr_buf[off..]);
         Ok(Self {
             reader,
             endian,
             header: PcapHeader {
                 magic_number: magic,
-                version_major: read_u16(4),
-                version_minor: read_u16(6),
+                version_major: endian.read_u16(&hdr_buf[4..]),
+                version_minor: endian.read_u16(&hdr_buf[6..]),
                 thiszone: read_u32(8) as i32,
                 sigfigs: read_u32(12),
                 snaplen: read_u32(16),
@@ -83,9 +61,9 @@ impl<R: Read> Iterator for PcapReader<R> {
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return None,
             Err(e) => return Some(Err(e)),
         }
-        let ts_sec = read_u32(&rec_hdr[0..4], self.endian);
-        let ts_usec = read_u32(&rec_hdr[4..8], self.endian);
-        let incl_len = read_u32(&rec_hdr[8..12], self.endian) as usize;
+        let ts_sec = self.endian.read_u32(&rec_hdr[0..]);
+        let ts_usec = self.endian.read_u32(&rec_hdr[4..]);
+        let incl_len = self.endian.read_u32(&rec_hdr[8..]) as usize;
 
         let mut data = vec![0u8; incl_len];
         if let Err(e) = self.reader.read_exact(&mut data) {

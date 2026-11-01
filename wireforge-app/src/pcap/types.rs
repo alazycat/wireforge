@@ -27,6 +27,24 @@ pub enum Endianness {
     Little,
 }
 
+impl Endianness {
+    /// Decode a u16 from the first two bytes of `buf`.
+    pub(crate) fn read_u16(self, buf: &[u8]) -> u16 {
+        match self {
+            Self::Big => u16::from_be_bytes([buf[0], buf[1]]),
+            Self::Little => u16::from_le_bytes([buf[0], buf[1]]),
+        }
+    }
+
+    /// Decode a u32 from the first four bytes of `buf`.
+    pub(crate) fn read_u32(self, buf: &[u8]) -> u32 {
+        match self {
+            Self::Big => u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
+            Self::Little => u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkType {
     Ethernet,
