@@ -1,5 +1,11 @@
 # PRD: WireForge — libpnet 功能对标与补齐计划
 
+> **⚠️ 历史文档（已归档）。** 本 PRD 撰写于 v1.0 发布之前，部分"状态"列已随
+> 后续实现过时（例如 IGMP/GRE 已实现、Windows NPcap reader 已实现）。
+> 当前与 libpnet 的真实差距以
+> [`docs/libpnet-parity-gap-analysis.md`](../docs/libpnet-parity-gap-analysis.md)
+> 为准，README 中的平台支持表为权威口径。本文仅保留作为规划过程记录。
+
 ## Introduction
 
 WireForge 目标是成为 libpnet 的纯 Rust 替代品。当前已覆盖 libpnet 核心协议栈的 ~80%，但仍有部分协议缺失、部分平台支持未完成。本文档逐项对比 WireForge 与 libpnet 的功能覆盖，输出补齐计划。
@@ -26,8 +32,8 @@ WireForge 目标是成为 libpnet 的纯 Rust 替代品。当前已覆盖 libpne
 | IPv4 | `ipv4.rs` | `wireforge-core::ipv4` | ✅ 完成 | 选项+校验和+Builder |
 | IPv6 | `ipv6.rs` | `wireforge-core::ipv6` | ✅ 完成 | 扩展头链+Builder |
 | ICMP | `icmp.rs` | `wireforge-core::icmp` | ✅ 完成 | ICMPv4 + ICMPv6/NDP |
-| **IGMP** | `igmp.rs` | — | ❌ 缺失 | 成员关系查询/报告（RFC 2236） |
-| **GRE** | `gre.rs` | — | ❌ 缺失 | 通用路由封装（RFC 2784） |
+| **IGMP** | —（libpnet 无 IGMP 模块） | `wireforge-core::igmp` | ✅ 已实现 | v1/v2/v3 + 类型化消息（WireForge 领先项） |
+| **GRE** | `gre.rs` | `wireforge-core::gre` | ✅ 已实现 | RFC 2784 + Key/Sequence（RFC 2890） |
 | **MPLS** | 不直接支持 | — | ⚠️ 可选 | MPLS 标签栈解析 |
 
 ### 1.3 L4 协议
@@ -65,7 +71,7 @@ WireForge 目标是成为 libpnet 的纯 Rust 替代品。当前已覆盖 libpne
 | Linux raw socket | ✅ | ✅ L3Receiver/L3Sender | ✅ 完成 |
 | macOS BPF | ✅ | ⚠️ BpfReader 空壳 | ❌ 待实现 |
 | macOS raw socket | ✅ | ⚠️ BsdL3Receiver 空壳 | ❌ 待实现 |
-| Windows NPcap/WinPcap | ✅ | ⚠️ NpcapReader 空壳 | ❌ 待实现 |
+| Windows NPcap/WinPcap | ✅ | ✅ NpcapReader 已实现（捕获，含混杂/超时选项；**发送未实现**） | 🟠 部分完成 |
 | Windows raw socket | ✅ | ✅ WinL3Receiver/Sender | ✅ 完成 |
 | 接口枚举 `list_interfaces()` | ✅ | ✅ 三平台已实现 | ✅ 完成 |
 | trait 抽象 (跨平台) | 无 | ✅ L2Reader/L2Writer trait | ✅ 完成 |

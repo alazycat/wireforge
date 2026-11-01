@@ -152,7 +152,7 @@ loop {
 ```
 
 > WireForge uses traits (`L2Reader`) instead of enum-based `Channel`. No tuple destructuring needed.
-> Cross-platform: same code works on Linux (AF_PACKET) and macOS (BPF).
+> Platform status: Linux (AF_PACKET) and Windows (NPcap) capture works; **macOS L2/L3 capture is not implemented yet**, and Windows L2 send is not implemented yet.
 
 ---
 
@@ -180,23 +180,33 @@ println!("sent {} bytes", n);
 
 ## Key Differences Summary
 
-| Feature | libpnet | WireForge |
-|---------|---------|-----------|
+| Feature | libpnet 0.35 | WireForge |
+|---------|--------------|-----------|
 | Parser output | `Option<Packet>` | `Option<Packet>` (same) |
 | Builder pattern | `MutablePacket` (in-place) | `Builder::build() -> Vec<u8>` |
-| Cross-platform | 3 platforms | 3 platforms (L2 trait) |
-| `no_std` core | No | Yes |
-| Application-layer | None | DNS, DHCP, NTP, HTTP |
+| In-place mutation | `Mutable*Packet` setters | not available (rebuild instead) |
+| Cross-platform | Linux/macOS/BSD/Windows | Linux full; Windows capture + L3; **macOS stubs** |
+| `no_std` core | Yes (`pnet_packet` is `no_std + alloc`) | Yes (`wireforge-core`, additionally zero dependencies) |
+| Application-layer | basic `dns`/`dhcp` field parsing | DNS, DHCP, NTP, HTTP, TLS, SSH, MQTT, Modbus, RADIUS, … (parse + build) |
 | pcap I/O | No | Yes (read/write pcap/pcapng) |
 | Checksum auto | Manual | Builder auto-computes |
-| Fuzz testing | No | 13 fuzz targets |
-| Extension headers | IPv6 basic | IPv6 + depth-limited chain + Iterator |
+| Fuzz testing | Yes (6 fuzz targets in `fuzz/fuzzers/`) | Yes (13 fuzz targets) |
+| Extension headers | IPv6 HopByHop/Routing/Fragment/Destination | IPv6 ext-header chain + depth limit + typed iterator |
+| Packet trait family | `Packet`/`MutablePacket`/`PacketSize` | `wireforge_core::Packet`/`MutablePacket`/`PacketSize` (subset) |
+| `pnet_macros` derive | Yes | No equivalent |
+
+> WireForge now covers all of libpnet 0.35's `pnet_packet` modules
+> (including `sll`, `sll2`, `vxlan`, `flowcontrol`, `usbpcap`) and
+> additionally ships IGMP, which libpnet does not have. The remaining
+> gaps are in datalink I/O platform coverage and `pnet_macros`, not in
+> protocol parsing — see the
+> [libpnet parity gap analysis](libpnet-parity-gap-analysis.md).
 
 ### WireForge Advantages
 
-1. **Application-layer protocols** — DNS, DHCP, NTP, HTTP built-in
+1. **Application-layer protocols** — DNS, DHCP, NTP, HTTP and more, with deep parsing and builders (libpnet 0.35 only has basic `dns`/`dhcp` field layouts)
 2. **pcap/pcapng I/O** — read/write packet captures, pure Rust
-3. **no_std core** — use `wireforge-core` in embedded/bare-metal
+3. **Zero-dependency core** — `wireforge-core` is `no_std + alloc` with **no external crates**, usable in embedded/bare-metal
 4. **Auto-checksum** — Builders compute IPv4/TCP/UDP/ICMP checksums automatically
 5. **Typed messages** — ICMP and IGMP have typed message enums (EchoRequest, DestUnreachable, etc.)
 6. **Depth-limited extension headers** — IPv6 extension header chain with max-depth guard
