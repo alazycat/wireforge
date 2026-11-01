@@ -15,6 +15,7 @@
 extern crate alloc;
 
 pub mod arp;
+pub mod define_protocol;
 pub mod ether;
 pub mod flowcontrol;
 pub mod gre;
