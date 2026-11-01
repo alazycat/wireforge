@@ -16,6 +16,7 @@ extern crate alloc;
 
 pub mod arp;
 pub mod ether;
+pub mod flowcontrol;
 pub mod gre;
 pub mod icmp;
 pub mod igmp;
@@ -27,6 +28,7 @@ pub mod sll2;
 pub mod tcp;
 pub mod types;
 pub mod udp;
+pub mod usbpcap;
 pub mod util;
 pub mod vlan;
 pub mod vxlan;

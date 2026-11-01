@@ -25,6 +25,7 @@ impl<W: Write> PcapNgWriter<W> {
             LinkType::Raw => 101,
             LinkType::LinuxSll => 113,
             LinkType::LinuxSll2 => 276,
+            LinkType::UsbPcap => 249,
             LinkType::Unknown(v) => v as u16,
         };
         let mut idb_body = Vec::with_capacity(8);

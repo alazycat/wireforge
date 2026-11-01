@@ -16,6 +16,7 @@ impl<W: Write> PcapWriter<W> {
             LinkType::Raw => 101,
             LinkType::LinuxSll => 113,
             LinkType::LinuxSll2 => 276,
+            LinkType::UsbPcap => 249,
             LinkType::Unknown(v) => v,
         };
         writer.write_all(&0xa1b2c3d4u32.to_be_bytes())?; // magic

@@ -189,6 +189,8 @@ pub enum EtherType {
     Lldp,
     /// MAC security (802.1AE)
     Macsec,
+    /// MAC control (802.3x flow control — PAUSE / PFC)
+    MacControl,
     /// Precision Time Protocol
     Ptp,
     /// Fibre Channel over Ethernet
@@ -220,6 +222,7 @@ impl From<u16> for EtherType {
             0x888E => Self::Eapol,
             0x88CC => Self::Lldp,
             0x88E5 => Self::Macsec,
+            0x8808 => Self::MacControl,
             0x88F7 => Self::Ptp,
             0x8906 => Self::Fcoe,
             0x9000 => Self::Loopback,
@@ -249,6 +252,7 @@ impl From<EtherType> for u16 {
             EtherType::Eapol => 0x888E,
             EtherType::Lldp => 0x88CC,
             EtherType::Macsec => 0x88E5,
+            EtherType::MacControl => 0x8808,
             EtherType::Ptp => 0x88F7,
             EtherType::Fcoe => 0x8906,
             EtherType::Loopback => 0x9000,

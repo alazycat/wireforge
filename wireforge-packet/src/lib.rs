@@ -14,6 +14,7 @@ use wireforge_core::sll2::Sll2Packet;
 use wireforge_core::tcp::TcpPacket;
 use wireforge_core::types::{EtherType, IpProtocol};
 use wireforge_core::udp::UdpPacket;
+use wireforge_core::usbpcap::UsbPcapPacket;
 use wireforge_core::vxlan::{VxlanPacket, VXLAN_UDP_PORT};
 
 /// Unified packet enum covering all supported L2–L4 protocols.
@@ -137,6 +138,8 @@ pub enum LinkType {
     LinuxSll,
     /// `DLT_LINUX_SLL2` (276) — Linux cooked capture v2 (newer tcpdump).
     LinuxSll2,
+    /// `LINKTYPE_USBPCAP` (249) — USBPcap USB traffic captures (Windows).
+    UsbPcap,
     /// Any other DLT value, held verbatim.
     Other(i32),
 }
@@ -149,6 +152,7 @@ impl LinkType {
             12 | 101 => LinkType::Raw,
             113 => LinkType::LinuxSll,
             276 => LinkType::LinuxSll2,
+            249 => LinkType::UsbPcap,
             other => LinkType::Other(other),
         }
     }
@@ -160,6 +164,7 @@ impl LinkType {
             LinkType::Raw => 12,
             LinkType::LinuxSll => 113,
             LinkType::LinuxSll2 => 276,
+            LinkType::UsbPcap => 249,
             LinkType::Other(v) => v,
         }
     }
@@ -171,6 +176,9 @@ pub enum LinkPacket<'a> {
     Ethernet(EthernetPacket<'a>),
     Sll(SllPacket<'a>),
     Sll2(Sll2Packet<'a>),
+    /// USBPcap capture (`LINKTYPE_USBPCAP`) — the USBPcap header itself;
+    /// the payload is raw USB transfer data, not a network protocol.
+    UsbPcap(UsbPcapPacket<'a>),
     /// Raw IP capture (`DLT_RAW`) — the link layer carries no header of
     /// its own; the bytes are the IP packet itself.
     RawIp(&'a [u8]),
@@ -225,6 +233,10 @@ pub fn parse_link_layer<'a>(link: LinkType, buf: &'a [u8]) -> Option<(LinkPacket
         LinkType::LinuxSll2 => {
             let (sll2, inner) = parse_sll2_frame(buf)?;
             Some((LinkPacket::Sll2(sll2), inner))
+        }
+        LinkType::UsbPcap => {
+            let usb = UsbPcapPacket::new(buf)?;
+            Some((LinkPacket::UsbPcap(usb), None))
         }
         LinkType::Raw => {
             let inner = match buf.first()? >> 4 {
@@ -503,6 +515,7 @@ pub fn collect_protocol_stack(pkt: &Packet<'_>) -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    use wireforge_core::usbpcap::{UsbPcapPacketBuilder, USBPCAP_TRANSFER_INTERRUPT};
     use wireforge_core::{Packet as PacketTrait, PacketSize};
 
     #[test]
@@ -616,10 +629,12 @@ mod tests {
         assert_eq!(LinkType::from_dlt(101), LinkType::Raw);
         assert_eq!(LinkType::from_dlt(113), LinkType::LinuxSll);
         assert_eq!(LinkType::from_dlt(276), LinkType::LinuxSll2);
+        assert_eq!(LinkType::from_dlt(249), LinkType::UsbPcap);
         assert_eq!(LinkType::from_dlt(999), LinkType::Other(999));
         assert_eq!(LinkType::Ethernet.dlt(), 1);
         assert_eq!(LinkType::LinuxSll.dlt(), 113);
         assert_eq!(LinkType::LinuxSll2.dlt(), 276);
+        assert_eq!(LinkType::UsbPcap.dlt(), 249);
     }
 
     #[test]
@@ -663,6 +678,29 @@ mod tests {
 
         // Unknown DLT → no dispatch.
         assert!(parse_link_layer(LinkType::Other(777), &ip_bytes).is_none());
+    }
+
+    #[test]
+    fn parse_link_layer_usbpcap() {
+        let packet = UsbPcapPacketBuilder::new()
+            .bus(1)
+            .device(5)
+            .transfer(USBPCAP_TRANSFER_INTERRUPT)
+            .payload(&[0xAA, 0xBB])
+            .build();
+
+        let (link, inner) = parse_link_layer(LinkType::UsbPcap, &packet).unwrap();
+        assert!(matches!(link, LinkPacket::UsbPcap(_)));
+        assert!(inner.is_none());
+
+        if let LinkPacket::UsbPcap(usb) = link {
+            assert_eq!(usb.bus(), 1);
+            assert_eq!(usb.device(), 5);
+            assert_eq!(usb.transfer(), USBPCAP_TRANSFER_INTERRUPT);
+            assert_eq!(usb.payload(), &[0xAA, 0xBB]);
+        } else {
+            unreachable!();
+        }
     }
 
     #[test]

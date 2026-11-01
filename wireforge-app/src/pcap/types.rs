@@ -53,6 +53,9 @@ pub enum LinkType {
     LinuxSll,
     /// Linux cooked capture v2 — emitted by newer tcpdump releases.
     LinuxSll2,
+    /// USBPcap USB traffic capture (Windows) — packets carry a USBPcap
+    /// header instead of a network link-layer header.
+    UsbPcap,
     Unknown(u32),
 }
 
@@ -63,6 +66,7 @@ impl From<u32> for LinkType {
             101 => LinkType::Raw,
             113 => LinkType::LinuxSll,
             276 => LinkType::LinuxSll2,
+            249 => LinkType::UsbPcap,
             _ => LinkType::Unknown(v),
         }
     }
@@ -99,6 +103,7 @@ mod tests {
         assert_eq!(LinkType::from(101), LinkType::Raw);
         assert_eq!(LinkType::from(113), LinkType::LinuxSll);
         assert_eq!(LinkType::from(276), LinkType::LinuxSll2);
+        assert_eq!(LinkType::from(249), LinkType::UsbPcap);
         assert_eq!(LinkType::from(999), LinkType::Unknown(999));
     }
 }
