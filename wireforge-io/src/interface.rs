@@ -247,10 +247,15 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
         length: u32,
         if_index: u32,
         next: *mut IpAdapterAddresses,
-        adapter_name: *const u8,
+        /// ANSI adapter name (usually the adapter GUID, e.g. `{A7D0...}`).
+        adapter_name: *const std::ffi::c_char,
         first_unicast_address: *mut IpAdapterUnicastAddress,
-        // skip: first_anycast(8), first_multicast(8), first_dns(8), dns_suffix(8), description(8), friendly_name(8)
-        _pad1: [u8; 48],
+        first_anycast_address: *mut std::ffi::c_void,
+        first_multicast_address: *mut std::ffi::c_void,
+        first_dns_server_address: *mut std::ffi::c_void,
+        dns_suffix: *const u16,
+        description: *const u16,
+        friendly_name: *const u16,
         physical_address: [u8; 8],
         physical_address_length: u32,
         flags: u32,
@@ -304,8 +309,15 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
     while !cur.is_null() {
         let a = unsafe { &*cur };
 
-        let name = wide_to_string(a.adapter_name);
-        let friendly_name = None; // field not directly accessible without offset; skip for now
+        let name = if a.adapter_name.is_null() {
+            String::new()
+        } else {
+            unsafe { std::ffi::CStr::from_ptr(a.adapter_name) }
+                .to_string_lossy()
+                .into_owned()
+        };
+        let friendly_name =
+            wide_ptr_to_string(a.friendly_name).or_else(|| wide_ptr_to_string(a.description));
 
         let mac = if a.physical_address_length == 6 {
             Some([
@@ -360,26 +372,21 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
     Ok(interfaces)
 }
 
+/// Decode a NUL-terminated UTF-16 string from the Windows IP Helper API.
 #[cfg(target_os = "windows")]
-fn wide_to_string(ptr: *const u8) -> String {
+fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
     if ptr.is_null() {
-        return String::new();
+        return None;
     }
-    let len = unsafe {
-        let mut end = ptr;
-        loop {
-            let w = u16::from_le_bytes([*end, *(end.offset(1))]);
-            if w == 0 {
-                break;
-            }
-            end = end.offset(2);
-        }
-        (end as usize - ptr as usize) / 2
-    };
-    let wide: Vec<u16> = (0..len)
-        .map(|i| unsafe { u16::from_le_bytes([*ptr.add(i * 2), *ptr.add(i * 2 + 1)]) })
-        .collect();
-    String::from_utf16_lossy(&wide)
+    let mut len = 0usize;
+    while unsafe { *ptr.add(len) } != 0 {
+        len += 1;
+    }
+    if len == 0 {
+        return None;
+    }
+    let wide = unsafe { std::slice::from_raw_parts(ptr, len) };
+    Some(String::from_utf16_lossy(wide))
 }
 
 // ---------------------------------------------------------------------------
@@ -403,5 +410,18 @@ mod tests {
             ifaces.iter().any(|i| i.is_loopback),
             "should contain loopback"
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_interface_names_are_ascii() {
+        let ifaces = list_interfaces().expect("list_interfaces should succeed");
+        for iface in &ifaces {
+            assert!(
+                iface.name.is_ascii(),
+                "interface name should be decoded from ANSI, got {:?}",
+                iface.name
+            );
+        }
     }
 }
