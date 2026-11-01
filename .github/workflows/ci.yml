@@ -3,7 +3,7 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  test:
+  build-and-unit:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -16,16 +16,21 @@ jobs:
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo doc --no-deps --workspace
 
-  test-linux-root:
+  linux-privileged-io:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: sudo cargo test --workspace -- --ignored
+      - name: Run privileged Linux I/O tests
+        run: |
+          sudo env \
+            "HOME=$HOME" \
+            "PATH=$PATH" \
+            "CARGO_HOME=${CARGO_HOME:-$HOME/.cargo}" \
+            "RUSTUP_HOME=${RUSTUP_HOME:-$HOME/.rustup}" \
+            cargo test --workspace -- --ignored --test-threads=1
 
-  test-macos-root:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: sudo cargo test --workspace -- --ignored
+# macOS privileged I/O tests are disabled until #3/#4 implement BPF/L3.
+# Windows Npcap tests require the Npcap driver; the free Npcap installer does
+# not support silent installation, so GitHub-hosted runners cannot run them.
+# Run locally with: cargo test -p wireforge-io npcap -- --ignored

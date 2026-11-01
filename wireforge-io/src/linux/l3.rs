@@ -40,7 +40,7 @@ impl L3Receiver {
             )
         };
         if n < 0 {
-            return Err(IoError::Socket(std::io::Error::last_os_error()));
+            return Err(common::recv_error(std::io::Error::last_os_error()));
         }
         let n = n as usize;
         Ipv4Packet::new(&self.buf[..n]).ok_or(IoError::Parse("invalid IPv4 packet"))
