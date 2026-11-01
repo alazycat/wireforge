@@ -32,33 +32,23 @@ impl DhcpPacketBuilder {
     }
 
     pub fn discover() -> Self {
-        let mut s = Self::new();
-        s.options.push(53);
-        s.options.push(1);
-        s.options.push(1);
-        s
+        Self::with_message_type(1, 1)
     }
     pub fn request() -> Self {
-        let mut s = Self::new();
-        s.options.push(53);
-        s.options.push(1);
-        s.options.push(3);
-        s
+        Self::with_message_type(1, 3)
     }
     pub fn offer() -> Self {
-        let mut s = Self::new();
-        s.buf[0] = 2;
-        s.options.push(53);
-        s.options.push(1);
-        s.options.push(2);
-        s
+        Self::with_message_type(2, 2)
     }
     pub fn ack() -> Self {
+        Self::with_message_type(2, 5)
+    }
+
+    /// Start a message with the BOOTP op and DHCP message type option.
+    fn with_message_type(op: u8, message_type: u8) -> Self {
         let mut s = Self::new();
-        s.buf[0] = 2;
-        s.options.push(53);
-        s.options.push(1);
-        s.options.push(5);
+        s.buf[0] = op;
+        s.push_option(53, &[message_type]);
         s
     }
 
