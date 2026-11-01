@@ -6,76 +6,6 @@ use std::time::Duration;
 use super::types::{Endianness, LinkType, PcapNgBlock};
 use super::PacketCaptureReader;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::pcap::PcapNgWriter;
-    use std::io::Cursor;
-
-    fn wrap_block(block_type: u32, body: &[u8]) -> Vec<u8> {
-        let len = (12 + body.len()) as u32;
-        let mut out = Vec::new();
-        out.extend_from_slice(&block_type.to_be_bytes());
-        out.extend_from_slice(&len.to_be_bytes());
-        out.extend_from_slice(body);
-        out.extend_from_slice(&len.to_be_bytes());
-        out
-    }
-
-    fn section_header() -> Vec<u8> {
-        let mut body = Vec::new();
-        body.extend_from_slice(&0x1A2B3C4Du32.to_be_bytes());
-        body.extend_from_slice(&1u16.to_be_bytes());
-        body.extend_from_slice(&0u16.to_be_bytes());
-        body.extend_from_slice(&u64::MAX.to_be_bytes());
-        wrap_block(0x0A0D0D0A, &body)
-    }
-
-    #[test]
-    fn writer_reader_roundtrip() {
-        let mut buf = Vec::new();
-        {
-            let mut writer = PcapNgWriter::new(&mut buf, LinkType::Ethernet).unwrap();
-            writer
-                .write_epb(Duration::from_micros(1_500_000), &[0xAA, 0xBB, 0xCC])
-                .unwrap();
-        }
-
-        let mut reader = PcapNgReader::new(Cursor::new(buf)).unwrap();
-        let (ts, data) = reader.next_packet().unwrap().unwrap();
-        assert_eq!(ts, Duration::from_micros(1_500_000));
-        assert_eq!(data, vec![0xAA, 0xBB, 0xCC]);
-        assert_eq!(reader.link_type(), Some(LinkType::Ethernet));
-    }
-
-    #[test]
-    fn truncated_interface_block_returns_error() {
-        let mut data = section_header();
-        data.extend_from_slice(&wrap_block(1, &[]));
-        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
-        assert!(matches!(reader.next(), Some(Err(_))));
-    }
-
-    #[test]
-    fn truncated_enhanced_packet_returns_error() {
-        let mut data = section_header();
-        data.extend_from_slice(&wrap_block(6, &[0u8; 4]));
-        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
-        assert!(matches!(reader.next(), Some(Err(_))));
-    }
-
-    #[test]
-    fn enhanced_packet_with_oversized_capture_length_returns_error() {
-        let mut body = vec![0u8; 20];
-        // captured length claims 64 bytes but no packet bytes follow
-        body[12..16].copy_from_slice(&64u32.to_be_bytes());
-        let mut data = section_header();
-        data.extend_from_slice(&wrap_block(6, &body));
-        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
-        assert!(matches!(reader.next(), Some(Err(_))));
-    }
-}
-
 pub struct PcapNgReader<R: Read> {
     reader: R,
     link_type: Option<LinkType>,
@@ -226,4 +156,74 @@ impl<R: Read> Iterator for PcapNgReader<R> {
 
 fn invalid_data(message: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pcap::PcapNgWriter;
+    use std::io::Cursor;
+
+    fn wrap_block(block_type: u32, body: &[u8]) -> Vec<u8> {
+        let len = (12 + body.len()) as u32;
+        let mut out = Vec::new();
+        out.extend_from_slice(&block_type.to_be_bytes());
+        out.extend_from_slice(&len.to_be_bytes());
+        out.extend_from_slice(body);
+        out.extend_from_slice(&len.to_be_bytes());
+        out
+    }
+
+    fn section_header() -> Vec<u8> {
+        let mut body = Vec::new();
+        body.extend_from_slice(&0x1A2B3C4Du32.to_be_bytes());
+        body.extend_from_slice(&1u16.to_be_bytes());
+        body.extend_from_slice(&0u16.to_be_bytes());
+        body.extend_from_slice(&u64::MAX.to_be_bytes());
+        wrap_block(0x0A0D0D0A, &body)
+    }
+
+    #[test]
+    fn writer_reader_roundtrip() {
+        let mut buf = Vec::new();
+        {
+            let mut writer = PcapNgWriter::new(&mut buf, LinkType::Ethernet).unwrap();
+            writer
+                .write_epb(Duration::from_micros(1_500_000), &[0xAA, 0xBB, 0xCC])
+                .unwrap();
+        }
+
+        let mut reader = PcapNgReader::new(Cursor::new(buf)).unwrap();
+        let (ts, data) = reader.next_packet().unwrap().unwrap();
+        assert_eq!(ts, Duration::from_micros(1_500_000));
+        assert_eq!(data, vec![0xAA, 0xBB, 0xCC]);
+        assert_eq!(reader.link_type(), Some(LinkType::Ethernet));
+    }
+
+    #[test]
+    fn truncated_interface_block_returns_error() {
+        let mut data = section_header();
+        data.extend_from_slice(&wrap_block(1, &[]));
+        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
+        assert!(matches!(reader.next(), Some(Err(_))));
+    }
+
+    #[test]
+    fn truncated_enhanced_packet_returns_error() {
+        let mut data = section_header();
+        data.extend_from_slice(&wrap_block(6, &[0u8; 4]));
+        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
+        assert!(matches!(reader.next(), Some(Err(_))));
+    }
+
+    #[test]
+    fn enhanced_packet_with_oversized_capture_length_returns_error() {
+        let mut body = vec![0u8; 20];
+        // captured length claims 64 bytes but no packet bytes follow
+        body[12..16].copy_from_slice(&64u32.to_be_bytes());
+        let mut data = section_header();
+        data.extend_from_slice(&wrap_block(6, &body));
+        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
+        assert!(matches!(reader.next(), Some(Err(_))));
+    }
 }
