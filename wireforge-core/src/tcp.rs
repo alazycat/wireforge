@@ -2,12 +2,12 @@
 
 use alloc::vec;
 use alloc::vec::Vec;
-use core::net::Ipv4Addr;
+use core::net::{Ipv4Addr, Ipv6Addr};
 
 use crate::types::IpProtocol;
 use crate::util::{
-    pseudo_header_checksum, read_u16be, read_u32be, seal_transport_checksum, write_u16be,
-    write_u32be,
+    ipv4_transport_checksum, ipv6_transport_checksum, read_u16be, read_u32be,
+    seal_transport_checksum, write_u16be, write_u32be,
 };
 
 pub const TCP_MIN_HEADER_LEN: usize = 20;
@@ -279,14 +279,14 @@ impl<'a> TcpPacket<'a> {
         self.data_offset() as usize * 4
     }
 
-    /// Verify the TCP checksum (includes IPv4 pseudo-header).
+    /// Verify the TCP checksum with an IPv4 pseudo-header.
     pub fn verify_checksum(&self, src: Ipv4Addr, dst: Ipv4Addr) -> bool {
-        pseudo_header_checksum(
-            &src.octets(),
-            &dst.octets(),
-            IpProtocol::Tcp.into(),
-            self.buf,
-        ) == 0
+        ipv4_transport_checksum(src, dst, IpProtocol::Tcp.into(), self.buf) == 0
+    }
+
+    /// Verify the TCP checksum with an IPv6 pseudo-header.
+    pub fn verify_checksum_v6(&self, src: Ipv6Addr, dst: Ipv6Addr) -> bool {
+        ipv6_transport_checksum(src, dst, IpProtocol::Tcp.into(), self.buf) == 0
     }
 }
 
@@ -444,8 +444,8 @@ impl TcpPacketBuilder {
         self
     }
 
-    /// Build the TCP packet, computing the checksum (IPv4 pseudo-header).
-    pub fn build(mut self, src: Ipv4Addr, dst: Ipv4Addr) -> Vec<u8> {
+    /// Finalize the TCP segment with a zero checksum field.
+    fn finish(mut self) -> Vec<u8> {
         // Pad options to 4-byte boundary with NoOps
         while !self.options.len().is_multiple_of(4) {
             self.options.push(OPT_NOOP);
@@ -461,6 +461,38 @@ impl TcpPacketBuilder {
         if let Some(ref p) = self.payload {
             packet.extend_from_slice(p);
         }
+        packet
+    }
+
+    /// Build the TCP packet, computing the checksum with an IPv4 pseudo-header.
+    pub fn build(self, src: Ipv4Addr, dst: Ipv4Addr) -> Vec<u8> {
+        let mut packet = self.finish();
+        seal_transport_checksum(
+            &mut packet,
+            16,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Tcp.into(),
+        );
+        packet
+    }
+
+    /// Build the TCP packet, computing the checksum with an IPv6 pseudo-header.
+    ///
+    /// ```
+    /// use core::net::Ipv6Addr;
+    /// use wireforge_core::tcp::{TcpPacket, TcpPacketBuilder};
+    ///
+    /// let src: Ipv6Addr = "2001:db8::1".parse().unwrap();
+    /// let dst: Ipv6Addr = "2001:db8::2".parse().unwrap();
+    /// let bytes = TcpPacketBuilder::new()
+    ///     .source_port(1234)
+    ///     .destination_port(80)
+    ///     .build_v6(src, dst);
+    /// assert!(TcpPacket::new(&bytes).unwrap().verify_checksum_v6(src, dst));
+    /// ```
+    pub fn build_v6(self, src: Ipv6Addr, dst: Ipv6Addr) -> Vec<u8> {
+        let mut packet = self.finish();
         seal_transport_checksum(
             &mut packet,
             16,
@@ -844,6 +876,17 @@ impl<'a> MutableTcpPacket<'a> {
 
     /// Recompute the TCP checksum with an IPv4 pseudo-header.
     pub fn update_checksum(&mut self, src: Ipv4Addr, dst: Ipv4Addr) {
+        seal_transport_checksum(
+            self.buf,
+            16,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Tcp.into(),
+        );
+    }
+
+    /// Recompute the TCP checksum with an IPv6 pseudo-header.
+    pub fn update_checksum_v6(&mut self, src: Ipv6Addr, dst: Ipv6Addr) {
         seal_transport_checksum(
             self.buf,
             16,
