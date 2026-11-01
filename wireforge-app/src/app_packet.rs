@@ -99,10 +99,11 @@ fn port_matches(src: u16, dst: u16, port: u16) -> bool {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust,no_run
 /// use wireforge_app::app_packet::parse_tcp_application;
 ///
-/// let pkt = parse_tcp_application(&buf, 54321, 443).expect("TLS packet");
+/// let buf: &[u8] = &[]; // replace with a real TLS payload
+/// let pkt = parse_tcp_application(buf, 54321, 443).expect("TLS packet");
 /// println!("{}", pkt.protocol_name());
 /// ```
 pub fn parse_tcp_application(buf: &[u8], src_port: u16, dst_port: u16) -> Option<AppPacket<'_>> {

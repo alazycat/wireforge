@@ -15,6 +15,9 @@ use wireforge_core::ether::EthernetPacketBuilder;
 use wireforge_core::icmp::IcmpPacketBuilder;
 use wireforge_core::ipv4::Ipv4PacketBuilder;
 use wireforge_core::types::{EtherType, IpProtocol};
+// The trait is required on platforms whose writer only implements `L2Writer`
+// (macOS BpfWriter); Linux/Windows also expose an inherent `send`.
+#[allow(unused_imports)]
 use wireforge_io::{traits::L2Writer, DefaultL2Writer};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

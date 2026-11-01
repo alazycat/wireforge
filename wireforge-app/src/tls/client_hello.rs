@@ -126,6 +126,8 @@ impl<'a> TlsClientHello<'a> {
             if ext.extension_type == 0x002b && !ext.data.is_empty() {
                 let len = ext.data[0] as usize;
                 if len < ext.data.len() {
+                    // `as_chunks` (suggested by clippy) requires Rust 1.88; MSRV is 1.75.
+                    #[allow(clippy::chunks_exact_to_as_chunks)]
                     let versions: Vec<u16> = ext.data[1..1 + len]
                         .chunks_exact(2)
                         .map(|c| u16::from_be_bytes([c[0], c[1]]))
