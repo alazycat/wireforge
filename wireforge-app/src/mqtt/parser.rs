@@ -468,6 +468,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_mqtt_subscribe() {
+        let data = crate::mqtt::builder::MqttPacketBuilder::subscribe(7, &[("a/b", 1), ("c", 0)]);
+        let pkt = MqttPacket::parse(&data).unwrap();
+        match pkt.message() {
+            MqttMessage::Subscribe { packet_id, topics } => {
+                assert_eq!(packet_id, 7);
+                assert_eq!(topics, vec![("a/b", 1), ("c", 0)]);
+            }
+            _ => panic!("expected Subscribe"),
+        }
+    }
+
+    #[test]
+    fn parse_mqtt_connack_is_unknown_message_with_empty_payload() {
+        // CONNACK: session_present=0, return_code=0.
+        let data = [0x20, 0x02, 0x00, 0x00];
+        let pkt = MqttPacket::parse(&data).unwrap();
+        assert!(matches!(pkt.message(), MqttMessage::Unknown { .. }));
+        assert!(pkt.payload().is_empty());
+    }
+
+    #[test]
     fn parse_mqtt_publish() {
         let topic = b"test/topic";
         let payload = b"hello";

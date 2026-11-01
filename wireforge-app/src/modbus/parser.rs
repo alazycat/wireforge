@@ -165,6 +165,89 @@ mod tests {
     }
 
     #[test]
+    fn parse_write_single_coil() {
+        // fc=5, address=0x0010, value=0xFF00 (on)
+        let data = &[
+            0x00u8, 0x01, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x10, 0xFF, 0x00,
+        ];
+        let pkt = ModbusTcpPacket::new(data).unwrap();
+        match pkt.function() {
+            ModbusFunction::WriteSingleCoil {
+                output_address,
+                value,
+            } => {
+                assert_eq!(output_address, 0x0010);
+                assert!(value);
+            }
+            _ => panic!("expected WriteSingleCoil"),
+        }
+    }
+
+    #[test]
+    fn parse_write_multiple_coils() {
+        // fc=15, address=1, quantity=3, byte_count=1, values=[0b101]
+        let data = &[
+            0x00u8, 0x01, 0x00, 0x00, 0x00, 0x08, 0x01, 0x0F, 0x00, 0x01, 0x00, 0x03, 0x01, 0x05,
+        ];
+        let pkt = ModbusTcpPacket::new(data).unwrap();
+        match pkt.function() {
+            ModbusFunction::WriteMultipleCoils {
+                starting_address,
+                quantity,
+                byte_count,
+                values,
+            } => {
+                assert_eq!(starting_address, 1);
+                assert_eq!(quantity, 3);
+                assert_eq!(byte_count, 1);
+                assert_eq!(values, &[0x05]);
+            }
+            _ => panic!("expected WriteMultipleCoils"),
+        }
+    }
+
+    #[test]
+    fn parse_write_multiple_registers() {
+        // fc=16, address=0, quantity=1, byte_count=2, value=0x002A
+        let data = &[
+            0x00u8, 0x01, 0x00, 0x00, 0x00, 0x09, 0x01, 0x10, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00,
+            0x2A,
+        ];
+        let pkt = ModbusTcpPacket::new(data).unwrap();
+        match pkt.function() {
+            ModbusFunction::WriteMultipleRegisters {
+                starting_address,
+                quantity,
+                byte_count,
+                values,
+            } => {
+                assert_eq!(starting_address, 0);
+                assert_eq!(quantity, 1);
+                assert_eq!(byte_count, 2);
+                assert_eq!(values, &[0x00, 0x2A]);
+            }
+            _ => panic!("expected WriteMultipleRegisters"),
+        }
+    }
+
+    #[test]
+    fn truncated_pdu_reads_zero_fields() {
+        // fc=1 with no address/quantity bytes.
+        let data = &[0x00u8, 0x01, 0x00, 0x00, 0x00, 0x02, 0x01, 0x01];
+        let pkt = ModbusTcpPacket::new(data).unwrap();
+        match pkt.function() {
+            ModbusFunction::ReadCoils {
+                starting_address,
+                quantity,
+            } => {
+                assert_eq!(starting_address, 0);
+                assert_eq!(quantity, 0);
+            }
+            _ => panic!("expected ReadCoils"),
+        }
+    }
+
+    #[test]
     fn parse_too_short() {
         assert!(ModbusTcpPacket::new(&[]).is_none());
         assert!(ModbusTcpPacket::new(&[0u8; 6]).is_none());

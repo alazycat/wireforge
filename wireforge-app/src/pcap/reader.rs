@@ -156,6 +156,34 @@ mod tests {
         assert_eq!(results[1].as_ref().unwrap().1, &[0xCC, 0xDD, 0xEE]);
     }
 
+    fn make_le_pcap_file(packets: &[&[u8]]) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&0xa1b2c3d4u32.to_le_bytes());
+        data.extend_from_slice(&2u16.to_le_bytes());
+        data.extend_from_slice(&4u16.to_le_bytes());
+        data.extend_from_slice(&[0u8; 8]);
+        data.extend_from_slice(&65535u32.to_le_bytes());
+        data.extend_from_slice(&1u32.to_le_bytes());
+        for pkt in packets {
+            data.extend_from_slice(&0u32.to_le_bytes());
+            data.extend_from_slice(&0u32.to_le_bytes());
+            data.extend_from_slice(&(pkt.len() as u32).to_le_bytes());
+            data.extend_from_slice(&(pkt.len() as u32).to_le_bytes());
+            data.extend_from_slice(pkt);
+        }
+        data
+    }
+
+    #[test]
+    fn read_little_endian_pcap() {
+        let packets: Vec<&[u8]> = vec![&[0xAA, 0xBB]];
+        let data = make_le_pcap_file(&packets);
+        let reader = PcapReader::from_bytes(data).unwrap();
+        assert_eq!(reader.header().network, 1);
+        let results: Vec<_> = reader.collect();
+        assert_eq!(results[0].as_ref().unwrap().1, &[0xAA, 0xBB]);
+    }
+
     #[test]
     fn read_pcap_bad_magic() {
         let mut data = vec![0u8; 24];
