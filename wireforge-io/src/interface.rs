@@ -8,6 +8,7 @@ use crate::error::IoError;
 
 /// An IP address together with its network prefix length.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IpNetwork {
     /// Address assigned to the interface.
     pub addr: IpAddr,
@@ -67,6 +68,7 @@ impl std::fmt::Display for IpNetwork {
 
 /// Information about a network interface.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Interface {
     /// OS-internal name (e.g. "eth0", "en0", `{GUID}` on Windows).
     pub name: String,

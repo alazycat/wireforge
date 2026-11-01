@@ -7,11 +7,22 @@ repository.workspace = true
 readme = "../README.md"
 description = "Zero-copy network packet parsers and builders — protocol types, checksums, core utilities"
 
+[features]
+default = []
+# Serde support for protocol type enums, MacAddr (and downstream types such
+# as wireforge-io's Interface). Keeps the crate no_std-compatible.
+serde = ["dep:serde"]
+
 [dependencies]
-# Zero external dependencies — core + alloc only (no_std compatible)
+# Zero external dependencies by default — core + alloc only (no_std compatible)
+serde = { version = "1", optional = true, default-features = false, features = [
+    "alloc",
+    "derive",
+] }
 
 [dev-dependencies]
 criterion = "0.5"
+serde_json = "1"
 
 [[bench]]
 name = "parse_bench"

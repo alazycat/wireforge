@@ -102,14 +102,21 @@ impl<'a> Ipv6Packet<'a> {
 }
 
 fn is_extension_header(proto: IpProtocol) -> bool {
-    matches!(proto, IpProtocol::Unknown(0 | 43 | 44 | 60))
+    matches!(
+        proto,
+        IpProtocol::Hopopt
+            | IpProtocol::Ipv6Route
+            | IpProtocol::Ipv6Fragment
+            | IpProtocol::Ipv6DestinationOptions
+    )
 }
 
 fn extension_header_len(proto: IpProtocol, data: &[u8]) -> usize {
     match proto {
-        IpProtocol::Unknown(0 | 60) => (data[1] as usize + 1) * 8,
-        IpProtocol::Unknown(43) => (data[1] as usize + 1) * 8,
-        IpProtocol::Unknown(44) => 8,
+        IpProtocol::Hopopt | IpProtocol::Ipv6Route | IpProtocol::Ipv6DestinationOptions => {
+            (data[1] as usize + 1) * 8
+        }
+        IpProtocol::Ipv6Fragment => 8,
         _ => 0,
     }
 }
@@ -215,17 +222,17 @@ impl<'a> Iterator for Ipv6ExtensionHeadersIter<'a> {
         let next_header = self.cursor.next_header;
 
         Some(match proto {
-            IpProtocol::Unknown(0) => Ipv6ExtensionHeader::HopByHop {
+            IpProtocol::Hopopt => Ipv6ExtensionHeader::HopByHop {
                 next_header,
                 data: hdr_data,
             },
-            IpProtocol::Unknown(43) => Ipv6ExtensionHeader::Routing {
+            IpProtocol::Ipv6Route => Ipv6ExtensionHeader::Routing {
                 next_header,
                 routing_type: hdr_data[2],
                 segments_left: hdr_data[3],
                 data: hdr_data,
             },
-            IpProtocol::Unknown(44) => {
+            IpProtocol::Ipv6Fragment => {
                 let offset = read_u16be(&hdr_data[2..4]);
                 Ipv6ExtensionHeader::Fragment {
                     next_header,
@@ -234,7 +241,7 @@ impl<'a> Iterator for Ipv6ExtensionHeadersIter<'a> {
                     id: read_u32be(&hdr_data[4..8]),
                 }
             }
-            IpProtocol::Unknown(60) => Ipv6ExtensionHeader::Destination {
+            IpProtocol::Ipv6DestinationOptions => Ipv6ExtensionHeader::Destination {
                 next_header,
                 data: hdr_data,
             },
@@ -305,7 +312,7 @@ impl Ipv6PacketBuilder {
 
     pub fn add_extension_header(mut self, proto: IpProtocol, data: &[u8]) -> Self {
         // Fragment header is always 8 bytes per RFC 8200.
-        if proto == IpProtocol::Unknown(44) && data.len() != 8 {
+        if proto == IpProtocol::Ipv6Fragment && data.len() != 8 {
             return self;
         }
         // Minimum 2 bytes (next_header + hdr_ext_len), practical minimum is 8.
@@ -446,13 +453,13 @@ mod tests {
             .destination(dst)
             .hop_limit(64)
             .next_header(IpProtocol::Icmpv6)
-            .add_extension_header(IpProtocol::Unknown(0), hbh_data)
+            .add_extension_header(IpProtocol::Hopopt, hbh_data)
             .payload(payload)
             .unwrap()
             .build();
 
         let pkt = Ipv6Packet::new(&pkt_bytes).unwrap();
-        assert_eq!(pkt.next_header(), IpProtocol::Unknown(0));
+        assert_eq!(pkt.next_header(), IpProtocol::Hopopt);
         assert_eq!(pkt.final_protocol(), IpProtocol::Icmpv6);
         assert_eq!(pkt.payload(), payload);
 
@@ -477,9 +484,9 @@ mod tests {
             .source(Ipv6Addr::LOCALHOST)
             .destination(Ipv6Addr::LOCALHOST)
             .next_header(IpProtocol::Tcp)
-            .add_extension_header(IpProtocol::Unknown(0), hbh)
-            .add_extension_header(IpProtocol::Unknown(43), routing)
-            .add_extension_header(IpProtocol::Unknown(44), fragment)
+            .add_extension_header(IpProtocol::Hopopt, hbh)
+            .add_extension_header(IpProtocol::Ipv6Route, routing)
+            .add_extension_header(IpProtocol::Ipv6Fragment, fragment)
             .payload(&[0x01, 0x02])
             .unwrap()
             .build();
@@ -527,14 +534,14 @@ mod tests {
             .next_header(IpProtocol::Tcp);
         for _ in 0..9 {
             pkt_bytes = pkt_bytes.add_extension_header(
-                IpProtocol::Unknown(0),
+                IpProtocol::Hopopt,
                 &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
             );
         }
         let pkt_bytes = pkt_bytes.payload(&[0x99]).unwrap().build();
 
         let pkt = Ipv6Packet::new(&pkt_bytes).unwrap();
-        // Iterator should stop at depth 8; final_protocol will be Unknown(0) (next to 9th).
+        // Iterator should stop at depth 8; final_protocol will be Hopopt (next to 9th).
         let count = pkt.extension_headers().count();
         assert_eq!(count, 8, "iterator should stop at MAX_EXTENSION_DEPTH (8)");
     }
@@ -547,7 +554,7 @@ mod tests {
             .source(Ipv6Addr::LOCALHOST)
             .destination(Ipv6Addr::LOCALHOST)
             .next_header(IpProtocol::Tcp)
-            .add_extension_header(IpProtocol::Unknown(44), &[0x06, 0x00, 0x00]) // only 3 bytes
+            .add_extension_header(IpProtocol::Ipv6Fragment, &[0x06, 0x00, 0x00]) // only 3 bytes
             .payload(&[0xAA])
             .unwrap()
             .build();
@@ -559,7 +566,7 @@ mod tests {
             .source(Ipv6Addr::LOCALHOST)
             .destination(Ipv6Addr::LOCALHOST)
             .next_header(IpProtocol::Tcp)
-            .add_extension_header(IpProtocol::Unknown(0), &[0x06]) // only 1 byte
+            .add_extension_header(IpProtocol::Hopopt, &[0x06]) // only 1 byte
             .payload(&[0xAA])
             .unwrap()
             .build();
@@ -584,7 +591,7 @@ mod tests {
 
         let pkt = Ipv6Packet::new(&data).unwrap();
         assert_eq!(pkt.final_protocol(), IpProtocol::Icmpv6);
-        assert_eq!(pkt.payload(), &[]);
+        assert!(pkt.payload().is_empty());
         assert_eq!(pkt.extension_headers().count(), 0);
     }
 
@@ -602,8 +609,8 @@ mod tests {
         data.push(0x3A); // only one byte of the extension header
 
         let pkt = Ipv6Packet::new(&data).unwrap();
-        assert_eq!(pkt.final_protocol(), IpProtocol::Unknown(0));
-        assert_eq!(pkt.payload(), &[]);
+        assert_eq!(pkt.final_protocol(), IpProtocol::Hopopt);
+        assert!(pkt.payload().is_empty());
         assert_eq!(pkt.extension_headers().count(), 0);
     }
 
@@ -615,7 +622,7 @@ mod tests {
             .source(Ipv6Addr::LOCALHOST)
             .destination(Ipv6Addr::LOCALHOST)
             .next_header(IpProtocol::Tcp)
-            .add_extension_header(IpProtocol::Unknown(44), frag)
+            .add_extension_header(IpProtocol::Ipv6Fragment, frag)
             .payload(&[0xCC])
             .unwrap()
             .build();
@@ -659,7 +666,7 @@ mod tests {
         data[5] = 10;
 
         let pkt = Ipv6Packet::new(&data).unwrap();
-        assert_eq!(pkt.next_header(), IpProtocol::Unknown(0));
+        assert_eq!(pkt.next_header(), IpProtocol::Hopopt);
         assert_eq!(pkt.final_protocol(), IpProtocol::Icmpv6);
         assert_eq!(pkt.payload(), &[0xAA, 0xBB]);
 
