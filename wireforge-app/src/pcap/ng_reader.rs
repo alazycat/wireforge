@@ -6,6 +6,76 @@ use std::time::Duration;
 use super::types::{Endianness, LinkType, PcapNgBlock};
 use super::PacketCaptureReader;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pcap::PcapNgWriter;
+    use std::io::Cursor;
+
+    fn wrap_block(block_type: u32, body: &[u8]) -> Vec<u8> {
+        let len = (12 + body.len()) as u32;
+        let mut out = Vec::new();
+        out.extend_from_slice(&block_type.to_be_bytes());
+        out.extend_from_slice(&len.to_be_bytes());
+        out.extend_from_slice(body);
+        out.extend_from_slice(&len.to_be_bytes());
+        out
+    }
+
+    fn section_header() -> Vec<u8> {
+        let mut body = Vec::new();
+        body.extend_from_slice(&0x1A2B3C4Du32.to_be_bytes());
+        body.extend_from_slice(&1u16.to_be_bytes());
+        body.extend_from_slice(&0u16.to_be_bytes());
+        body.extend_from_slice(&u64::MAX.to_be_bytes());
+        wrap_block(0x0A0D0D0A, &body)
+    }
+
+    #[test]
+    fn writer_reader_roundtrip() {
+        let mut buf = Vec::new();
+        {
+            let mut writer = PcapNgWriter::new(&mut buf, LinkType::Ethernet).unwrap();
+            writer
+                .write_epb(Duration::from_micros(1_500_000), &[0xAA, 0xBB, 0xCC])
+                .unwrap();
+        }
+
+        let mut reader = PcapNgReader::new(Cursor::new(buf)).unwrap();
+        let (ts, data) = reader.next_packet().unwrap().unwrap();
+        assert_eq!(ts, Duration::from_micros(1_500_000));
+        assert_eq!(data, vec![0xAA, 0xBB, 0xCC]);
+        assert_eq!(reader.link_type(), Some(LinkType::Ethernet));
+    }
+
+    #[test]
+    fn truncated_interface_block_returns_error() {
+        let mut data = section_header();
+        data.extend_from_slice(&wrap_block(1, &[]));
+        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
+        assert!(matches!(reader.next(), Some(Err(_))));
+    }
+
+    #[test]
+    fn truncated_enhanced_packet_returns_error() {
+        let mut data = section_header();
+        data.extend_from_slice(&wrap_block(6, &[0u8; 4]));
+        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
+        assert!(matches!(reader.next(), Some(Err(_))));
+    }
+
+    #[test]
+    fn enhanced_packet_with_oversized_capture_length_returns_error() {
+        let mut body = vec![0u8; 20];
+        // captured length claims 64 bytes but no packet bytes follow
+        body[12..16].copy_from_slice(&64u32.to_be_bytes());
+        let mut data = section_header();
+        data.extend_from_slice(&wrap_block(6, &body));
+        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
+        assert!(matches!(reader.next(), Some(Err(_))));
+    }
+}
+
 pub struct PcapNgReader<R: Read> {
     reader: R,
     link_type: Option<LinkType>,
@@ -14,17 +84,30 @@ pub struct PcapNgReader<R: Read> {
 
 impl<R: Read> PcapNgReader<R> {
     pub fn new(mut reader: R) -> Result<Self, std::io::Error> {
-        // Read first block to determine byte order
-        let mut hdr = [0u8; 8];
-        reader.read_exact(&mut hdr)?;
-        let block_type = u32::from_be_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]);
-        let _block_len = u32::from_be_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]);
-        // SHB has type 0x0A0D0D0A
-        let byte_order = if block_type == 0x0A0D0D0A {
-            Endianness::Big
-        } else {
-            Endianness::Little
+        // The section header starts with block type, total length, and the
+        // byte-order magic that determines how every field is decoded.
+        let mut shb = [0u8; 12];
+        reader.read_exact(&mut shb)?;
+        let block_type = u32::from_be_bytes([shb[0], shb[1], shb[2], shb[3]]);
+        if block_type != 0x0A0D0D0A {
+            return Err(invalid_data("pcapng section header block not found"));
+        }
+        let byte_order = match u32::from_be_bytes([shb[8], shb[9], shb[10], shb[11]]) {
+            0x1A2B3C4D => Endianness::Big,
+            0x4D3C2B1A => Endianness::Little,
+            _ => return Err(invalid_data("invalid pcapng byte-order magic")),
         };
+        let block_len = byte_order.read_u32(&shb[4..]) as usize;
+        if block_len < 28 {
+            return Err(invalid_data("pcapng section header block too short"));
+        }
+        // Consume the rest of the section header, including the trailing length.
+        let mut rest = vec![0u8; block_len - 12];
+        reader.read_exact(&mut rest)?;
+        let trailing = byte_order.read_u32(&rest[rest.len() - 4..]) as usize;
+        if trailing != block_len {
+            return Err(invalid_data("pcapng section header length mismatch"));
+        }
         Ok(Self {
             reader,
             link_type: None,
@@ -82,31 +165,54 @@ impl<R: Read> Iterator for PcapNgReader<R> {
         }
         // Read trailing block length
         let mut tail = [0u8; 4];
-        let _ = self.reader.read_exact(&mut tail);
+        if let Err(e) = self.reader.read_exact(&mut tail) {
+            return Some(Err(e));
+        }
 
         let block = match block_type {
-            0x0A0D0D0A => PcapNgBlock::SectionHeader {
-                byte_order: self.byte_order,
-                version: self.byte_order.read_u16(&body),
-            },
+            0x0A0D0D0A => {
+                if body.len() < 6 {
+                    return Some(Err(invalid_data("truncated section header block")));
+                }
+                PcapNgBlock::SectionHeader {
+                    byte_order: self.byte_order,
+                    version: self.byte_order.read_u16(&body[4..]),
+                }
+            }
             0x00000001 => {
-                let lt = self.byte_order.read_u16(&body[8..]) as u32;
+                if body.len() < 8 {
+                    return Some(Err(invalid_data("truncated interface description block")));
+                }
+                let lt = self.byte_order.read_u16(&body) as u32;
                 self.link_type = Some(LinkType::from(lt));
                 PcapNgBlock::InterfaceDescription {
                     link_type: LinkType::from(lt),
-                    snap_len: self.byte_order.read_u32(&body[12..]),
+                    snap_len: self.byte_order.read_u32(&body[4..]),
                 }
             }
             0x00000006 => {
-                let _if_id = self.byte_order.read_u32(&body[0..]);
+                if body.len() < 20 {
+                    return Some(Err(invalid_data("truncated enhanced packet block")));
+                }
+                let _if_id = self.byte_order.read_u32(&body);
                 let ts_hi = self.byte_order.read_u32(&body[4..]) as u64;
                 let ts_lo = self.byte_order.read_u32(&body[8..]) as u64;
                 let cap_len = self.byte_order.read_u32(&body[12..]) as usize;
-                let ts = Duration::new(ts_hi, (ts_lo / 1000) as u32);
-                let data = body[20..20 + cap_len].to_vec();
+                let Some(end) = 20usize.checked_add(cap_len) else {
+                    return Some(Err(invalid_data(
+                        "enhanced packet block capture length overflow",
+                    )));
+                };
+                let Some(packet) = body.get(20..end) else {
+                    return Some(Err(invalid_data(
+                        "enhanced packet block capture length exceeds block",
+                    )));
+                };
+                // Default if_tsresol is 10^-6: timestamp ticks are microseconds.
+                let ts = Duration::from_micros((ts_hi << 32) | ts_lo);
                 PcapNgBlock::EnhancedPacket {
                     timestamp: ts,
-                    data,
+                    data: packet.to_vec(),
                 }
             }
             _ => PcapNgBlock::Unknown {
@@ -116,4 +222,8 @@ impl<R: Read> Iterator for PcapNgReader<R> {
         };
         Some(Ok(block))
     }
+}
+
+fn invalid_data(message: &str) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, message)
 }

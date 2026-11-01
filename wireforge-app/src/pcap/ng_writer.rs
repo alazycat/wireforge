@@ -11,55 +11,55 @@ pub struct PcapNgWriter<W: Write> {
 
 impl<W: Write> PcapNgWriter<W> {
     pub fn new(mut writer: W, link_type: LinkType) -> Result<Self, std::io::Error> {
-        // Write SHB
-        let shb_body = [0u8; 16]; // byte_order_magic(4) + major(2) + minor(2) + section_len(8)
-        let shb_len = 28u32; // 4(type) + 4(len) + 16(body) + 4(len)
-        writer.write_all(&0x0A0D0D0Au32.to_be_bytes())?;
-        writer.write_all(&shb_len.to_be_bytes())?;
-        writer.write_all(&shb_body)?;
-        writer.write_all(&shb_len.to_be_bytes())?;
+        // Section Header Block: byte-order magic, version 1.0, unknown length.
+        let mut shb_body = Vec::with_capacity(16);
+        shb_body.extend_from_slice(&0x1A2B3C4Du32.to_be_bytes());
+        shb_body.extend_from_slice(&1u16.to_be_bytes()); // major version
+        shb_body.extend_from_slice(&0u16.to_be_bytes()); // minor version
+        shb_body.extend_from_slice(&u64::MAX.to_be_bytes()); // section length
+        write_block(&mut writer, 0x0A0D0D0A, &shb_body)?;
 
-        // Write IDB
+        // Interface Description Block.
         let lt: u16 = match link_type {
             LinkType::Ethernet => 1,
             LinkType::Raw => 101,
             LinkType::Unknown(v) => v as u16,
         };
-        let mut idb_body = vec![0u8; 16];
-        idb_body[8..10].copy_from_slice(&lt.to_le_bytes()); // link_type at offset 8
-        let idb_len = 32u32; // 4(type) + 4(len) + 16(body) + 4(len)
-        writer.write_all(&1u32.to_be_bytes())?;
-        writer.write_all(&idb_len.to_be_bytes())?;
-        writer.write_all(&idb_body)?;
-        writer.write_all(&idb_len.to_be_bytes())?;
+        let mut idb_body = Vec::with_capacity(8);
+        idb_body.extend_from_slice(&lt.to_be_bytes()); // link type
+        idb_body.extend_from_slice(&0u16.to_be_bytes()); // reserved
+        idb_body.extend_from_slice(&65535u32.to_be_bytes()); // snap length
+        write_block(&mut writer, 1, &idb_body)?;
 
         Ok(Self { writer })
     }
 
     pub fn write_epb(&mut self, ts: Duration, packet: &[u8]) -> Result<(), std::io::Error> {
+        let micros = ts.as_micros().min(u64::MAX as u128) as u64;
         let padded_len = (packet.len() + 3) & !3;
-        let epb_body_len = 20 + padded_len;
-        let epb_total_len = 12 + epb_body_len; // 4(type) + 4(len) + body + 4(len)
+        let mut body = Vec::with_capacity(20 + padded_len);
+        body.extend_from_slice(&0u32.to_be_bytes()); // interface_id
+        body.extend_from_slice(&((micros >> 32) as u32).to_be_bytes()); // ts_high
+        body.extend_from_slice(&(micros as u32).to_be_bytes()); // ts_low
+        body.extend_from_slice(&(packet.len() as u32).to_be_bytes()); // captured_len
+        body.extend_from_slice(&(packet.len() as u32).to_be_bytes()); // original_len
+        body.extend_from_slice(packet);
+        body.resize(20 + padded_len, 0);
 
-        self.writer.write_all(&6u32.to_be_bytes())?;
-        self.writer
-            .write_all(&(epb_total_len as u32).to_be_bytes())?;
-        self.writer.write_all(&0u32.to_be_bytes())?; // interface_id
-        self.writer
-            .write_all(&(ts.as_secs() as u32).to_be_bytes())?; // ts_high
-        self.writer.write_all(&ts.subsec_nanos().to_be_bytes())?; // ts_low
-        self.writer
-            .write_all(&(packet.len() as u32).to_be_bytes())?; // captured_len
-        self.writer
-            .write_all(&(packet.len() as u32).to_be_bytes())?; // original_len
-        self.writer.write_all(packet)?;
-        // Padding
-        if padded_len > packet.len() {
-            self.writer
-                .write_all(&vec![0u8; padded_len - packet.len()])?;
-        }
-        self.writer
-            .write_all(&(epb_total_len as u32).to_be_bytes())?;
+        write_block(&mut self.writer, 6, &body)?;
         self.writer.flush()
     }
+}
+
+/// Write a block with its total-length prefix and suffix.
+fn write_block<W: Write>(
+    writer: &mut W,
+    block_type: u32,
+    body: &[u8],
+) -> Result<(), std::io::Error> {
+    let total_len = (12 + body.len()) as u32;
+    writer.write_all(&block_type.to_be_bytes())?;
+    writer.write_all(&total_len.to_be_bytes())?;
+    writer.write_all(body)?;
+    writer.write_all(&total_len.to_be_bytes())
 }
