@@ -27,6 +27,7 @@ pub mod types;
 pub mod udp;
 pub mod util;
 pub mod vlan;
+pub mod vxlan;
 
 pub use packet::{FromPacket, MutablePacket, Packet, PacketSize};
 pub use util::BuildError;

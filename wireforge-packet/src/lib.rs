@@ -12,6 +12,7 @@ use wireforge_core::ipv6::Ipv6Packet;
 use wireforge_core::tcp::TcpPacket;
 use wireforge_core::types::{EtherType, IpProtocol};
 use wireforge_core::udp::UdpPacket;
+use wireforge_core::vxlan::{VxlanPacket, VXLAN_UDP_PORT};
 
 /// Unified packet enum covering all supported L2–L4 protocols.
 #[non_exhaustive]
@@ -109,6 +110,45 @@ pub fn parse_ipv6_payload<'a>(ip: &Ipv6Packet<'a>) -> Option<Packet<'a>> {
         IpProtocol::Udp => UdpPacket::new(ip.payload()).map(Packet::Udp),
         _ => None,
     }
+}
+
+/// Parse a VXLAN datagram carried in UDP (destination port 4789, RFC 7348).
+///
+/// Returns the VXLAN header and, when the encapsulated payload is a valid
+/// Ethernet frame, the frame together with its dispatched inner packet.
+///
+/// # Examples
+///
+/// ```
+/// use wireforge_core::udp::UdpPacket;
+/// use wireforge_core::util::PacketBuilder;
+/// use wireforge_core::vxlan::VxlanPacketBuilder;
+/// use wireforge_packet::parse_udp_vxlan;
+///
+/// // Build a UDP datagram with a VXLAN payload (checksum zeroed for simplicity).
+/// let inner = [0xEEu8; 14]; // inner Ethernet frame
+/// let vxlan = VxlanPacketBuilder::new(0x42).payload(&inner).build();
+/// let mut udp = vec![0x12, 0x35, 0x12, 0xB5, 0x00, 0x1E, 0x00, 0x00];
+/// udp.extend_from_slice(&vxlan);
+///
+/// let udp = UdpPacket::new(&udp).unwrap();
+/// let (vxlan, eth, dispatched) = parse_udp_vxlan(&udp).unwrap();
+/// assert_eq!(vxlan.vni(), 0x42);
+/// assert!(eth.is_some());
+/// assert!(dispatched.is_none()); // 0xEE... is not a valid EtherType dispatch
+/// ```
+pub fn parse_udp_vxlan<'a>(
+    udp: &UdpPacket<'a>,
+) -> Option<(VxlanPacket<'a>, Option<EthernetPacket<'a>>, Option<Packet<'a>>)> {
+    if udp.destination_port() != VXLAN_UDP_PORT {
+        return None;
+    }
+    let vxlan = VxlanPacket::new(udp.payload())?;
+    let (eth, dispatched) = match parse_ethernet_frame(vxlan.payload()) {
+        Some((eth, dispatched)) => (Some(eth), dispatched),
+        None => (None, None),
+    };
+    Some((vxlan, eth, dispatched))
 }
 
 // ===========================================================================
@@ -335,6 +375,45 @@ mod tests {
     use super::*;
     use wireforge_core::ipv4::Ipv4PacketBuilder;
     use wireforge_core::udp::UdpPacketBuilder;
+    use wireforge_core::vxlan::VxlanPacketBuilder;
+    use wireforge_core::util::PacketBuilder;
+
+    #[test]
+    fn parse_udp_vxlan_dispatches_inner_frame() {
+        // Inner Ethernet frame carrying ARP (dst mac ff:ff, ethertype 0x0806).
+        let mut inner = vec![0xFF; 6];
+        inner.extend_from_slice(&[0x02; 6]);
+        inner.extend_from_slice(&[0x08, 0x06]);
+        inner.extend_from_slice(&[0x00; 28]); // ARP body
+
+        let vxlan = VxlanPacketBuilder::new(0x00ABCD).payload(&inner).build();
+        let udp_len = 8 + vxlan.len();
+        let mut udp = vec![0x12, 0x35, 0x12, 0xB5, (udp_len >> 8) as u8, udp_len as u8, 0, 0];
+        udp.extend_from_slice(&vxlan);
+
+        let udp_pkt = UdpPacket::new(&udp).unwrap();
+        let (vxlan, eth, dispatched) = parse_udp_vxlan(&udp_pkt).unwrap();
+        assert_eq!(vxlan.vni(), 0x00ABCD);
+        assert_eq!(eth.unwrap().ethertype(), EtherType::Arp);
+        assert!(matches!(dispatched, Some(Packet::Arp(_))));
+    }
+
+    #[test]
+    fn parse_udp_vxlan_rejects_wrong_port() {
+        let vxlan = VxlanPacketBuilder::new(1).build();
+        let mut udp = vec![0x12, 0x35, 0x1F, 0x90, 0x00, 0x10, 0, 0]; // dst port 8080
+        udp.extend_from_slice(&vxlan);
+        let udp_pkt = UdpPacket::new(&udp).unwrap();
+        assert!(parse_udp_vxlan(&udp_pkt).is_none());
+    }
+
+    #[test]
+    fn parse_udp_vxlan_rejects_short_payload() {
+        // UDP length 12 = 8 header + only 4 bytes of "VXLAN" (truncated).
+        let udp = vec![0x12, 0x35, 0x12, 0xB5, 0x00, 0x0C, 0, 0, 0, 0, 0, 0];
+        let udp_pkt = UdpPacket::new(&udp).unwrap();
+        assert!(parse_udp_vxlan(&udp_pkt).is_none());
+    }
 
     #[test]
     fn dispatch_ethernet_to_ipv4_to_tcp() {
