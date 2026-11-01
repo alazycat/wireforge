@@ -42,7 +42,7 @@ mod interface;
 
 pub use config::{Config, FanoutOption, FanoutType};
 pub use error::IoError;
-pub use interface::{list_interfaces, Interface};
+pub use interface::{list_interfaces, Interface, IpNetwork};
 
 // Re-export existing concrete types from their new platform homes
 #[cfg(target_os = "linux")]
