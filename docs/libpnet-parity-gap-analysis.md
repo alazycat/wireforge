@@ -17,6 +17,16 @@
 > `pnet_transport` 现有等价物 `wireforge_io::transport`
 > （`transport_channel` + 类型化迭代器 + TTL/ECN + `next_with_timeout`）。
 > 其余仍然有效的结论：macOS 空壳、Windows L2 发送缺失。
+>
+> **状态更新（2026-11-01，收尾核查）**：Issues #5–#15、#17–#20 已全部实现并关闭，
+> 全量回归验证通过（333 单测 + 17 doctest，clippy 零警告）。上文"主要差距集中
+> 在三块"中的第 2、3 块已消除，第 1 块仅剩 macOS 两项：**#3（BPF L2）与
+> #4（L3 raw socket）为 macOS 专属硬门槛，暂缓实施，待 macOS 环境可用时执行**。
+> Windows/Linux 的 P0 项（Npcap 收发、L3 IPv6、datalink Config/channel、
+> Interface 枚举）均已完成。当前定位可更新为：
+>
+> **Linux/Windows 上可用的 libpnet 子集，加上更完整的应用层协议与 pcap 文件能力；
+> macOS 支持待 #3/#4 落地。**
 
 ## 结论
 
@@ -202,28 +212,29 @@ Windows NPcap 空壳（reader 已实现）、libpnet 有 IGMP / 无 GRE（实际
 
 ## 对应 GitHub Issues
 
-以上差距已拆分为 GitHub Issues（2026-11-01 创建），使用 `P0`/`P1`/`P2`/`P3` 标签：
+以上差距已拆分为 GitHub Issues（2026-11-01 创建），使用 `P0`/`P1`/`P2`/`P3` 标签。
+状态更新（2026-11-01）：除 #3/#4 外全部关闭。
 
-| 优先级 | Issue | 主题 |
-|---|---|---|
-| P0 | [#3](https://github.com/alazycat/wireforge/issues/3) | macOS BPF L2 抓包与注入实现 |
-| P0 | [#4](https://github.com/alazycat/wireforge/issues/4) | macOS L3 raw socket 收发实现 |
-| P0 | [#5](https://github.com/alazycat/wireforge/issues/5) | Windows Npcap：发送、混杂模式、超时 |
-| P0 | [#6](https://github.com/alazycat/wireforge/issues/6) | L3 I/O 支持 IPv6 |
-| P0 | [#7](https://github.com/alazycat/wireforge/issues/7) | datalink Config/channel、fanout、批量发送 |
-| P0 | [#8](https://github.com/alazycat/wireforge/issues/8) | Interface 枚举信息补齐 |
-| P1 | [#9](https://github.com/alazycat/wireforge/issues/9) | 公共 Packet trait 家族 |
-| P1 | [#10](https://github.com/alazycat/wireforge/issues/10) | Mutable*Packet 原地修改 API |
-| P1 | [#11](https://github.com/alazycat/wireforge/issues/11) | TCP/UDP IPv6 校验和 |
-| P1 | [#12](https://github.com/alazycat/wireforge/issues/12) | IPv4 options 构造 |
-| P1 | [#13](https://github.com/alazycat/wireforge/issues/13) | pnet_macros 等价派生宏（需确认范围） |
-| P1 | [#14](https://github.com/alazycat/wireforge/issues/14) | pnet_transport 等价传输层（需确认范围） |
-| P1 | [#15](https://github.com/alazycat/wireforge/issues/15) | serde、MacAddr、IANA 常量 |
-| P2 | [#16](https://github.com/alazycat/wireforge/issues/16) | SLL/SLL2（Linux cooked capture） |
-| P2 | [#17](https://github.com/alazycat/wireforge/issues/17) | VXLAN |
-| P2 | [#18](https://github.com/alazycat/wireforge/issues/18) | Ethernet flow control 与 USBPcap |
-| P3 | [#19](https://github.com/alazycat/wireforge/issues/19) | README/迁移指南/PRD 修正 |
-| P3 | [#20](https://github.com/alazycat/wireforge/issues/20) | CI 与测试基础设施 |
+| 优先级 | Issue | 主题 | 状态 |
+|---|---|---|---|
+| P0 | [#3](https://github.com/alazycat/wireforge/issues/3) | macOS BPF L2 抓包与注入实现 | **开放（暂缓，待 macOS 环境）** |
+| P0 | [#4](https://github.com/alazycat/wireforge/issues/4) | macOS L3 raw socket 收发实现 | **开放（暂缓，待 macOS 环境）** |
+| P0 | [#5](https://github.com/alazycat/wireforge/issues/5) | Windows Npcap：发送、混杂模式、超时 | 已关闭 |
+| P0 | [#6](https://github.com/alazycat/wireforge/issues/6) | L3 I/O 支持 IPv6 | 已关闭 |
+| P0 | [#7](https://github.com/alazycat/wireforge/issues/7) | datalink Config/channel、fanout、批量发送 | 已关闭 |
+| P0 | [#8](https://github.com/alazycat/wireforge/issues/8) | Interface 枚举信息补齐 | 已关闭 |
+| P1 | [#9](https://github.com/alazycat/wireforge/issues/9) | 公共 Packet trait 家族 | 已关闭 |
+| P1 | [#10](https://github.com/alazycat/wireforge/issues/10) | Mutable*Packet 原地修改 API | 已关闭 |
+| P1 | [#11](https://github.com/alazycat/wireforge/issues/11) | TCP/UDP IPv6 校验和 | 已关闭 |
+| P1 | [#12](https://github.com/alazycat/wireforge/issues/12) | IPv4 options 构造 | 已关闭 |
+| P1 | [#13](https://github.com/alazycat/wireforge/issues/13) | pnet_macros 等价派生宏（需确认范围） | 已关闭 |
+| P1 | [#14](https://github.com/alazycat/wireforge/issues/14) | pnet_transport 等价传输层（需确认范围） | 已关闭 |
+| P1 | [#15](https://github.com/alazycat/wireforge/issues/15) | serde、MacAddr、IANA 常量 | 已关闭 |
+| P2 | [#16](https://github.com/alazycat/wireforge/issues/16) | SLL/SLL2（Linux cooked capture） | 已关闭 |
+| P2 | [#17](https://github.com/alazycat/wireforge/issues/17) | VXLAN | 已关闭 |
+| P2 | [#18](https://github.com/alazycat/wireforge/issues/18) | Ethernet flow control 与 USBPcap | 已关闭 |
+| P3 | [#19](https://github.com/alazycat/wireforge/issues/19) | README/迁移指南/PRD 修正 | 已关闭 |
+| P3 | [#20](https://github.com/alazycat/wireforge/issues/20) | CI 与测试基础设施 | 已关闭 |
 
 ---
 
