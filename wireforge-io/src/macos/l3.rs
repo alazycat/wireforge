@@ -52,17 +52,26 @@ impl BsdL3ReceiverV6 {
     pub fn new(_protocol: IpProtocol) -> Result<Self, IoError> {
         Err(IoError::UnsupportedPlatform)
     }
+    pub fn recv(&mut self) -> Result<Ipv6Packet<'_>, IoError> {
+        Err(IoError::UnsupportedPlatform)
+    }
+    pub fn set_timeout(&mut self, _dur: Option<Duration>) -> Result<(), IoError> {
+        Err(IoError::UnsupportedPlatform)
+    }
+    pub fn set_header_included(&mut self, _on: bool) -> Result<(), IoError> {
+        Err(IoError::UnsupportedPlatform)
+    }
 }
 
 impl L3ReaderV6 for BsdL3ReceiverV6 {
     fn recv(&mut self) -> Result<Ipv6Packet<'_>, IoError> {
-        Err(IoError::UnsupportedPlatform)
+        self.recv()
     }
-    fn set_timeout(&mut self, _dur: Option<Duration>) -> Result<(), IoError> {
-        Err(IoError::UnsupportedPlatform)
+    fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError> {
+        self.set_timeout(dur)
     }
-    fn set_header_included(&mut self, _on: bool) -> Result<(), IoError> {
-        Err(IoError::UnsupportedPlatform)
+    fn set_header_included(&mut self, on: bool) -> Result<(), IoError> {
+        self.set_header_included(on)
     }
 }
 
@@ -70,10 +79,13 @@ impl BsdL3SenderV6 {
     pub fn new() -> Result<Self, IoError> {
         Err(IoError::UnsupportedPlatform)
     }
+    pub fn send_to(&self, _packet: &[u8], _dst: SocketAddrV6) -> Result<usize, IoError> {
+        Err(IoError::UnsupportedPlatform)
+    }
 }
 
 impl L3WriterV6 for BsdL3SenderV6 {
-    fn send_to(&self, _packet: &[u8], _dst: SocketAddrV6) -> Result<usize, IoError> {
-        Err(IoError::UnsupportedPlatform)
+    fn send_to(&self, packet: &[u8], dst: SocketAddrV6) -> Result<usize, IoError> {
+        self.send_to(packet, dst)
     }
 }

@@ -50,9 +50,9 @@ pub use linux::{L2Receiver, L2Sender, L3Receiver, L3ReceiverV6, L3Sender, L3Send
 // Each alias resolves to the appropriate platform implementation at compile time.
 
 /// The default L2 frame reader for the current platform.
-/// - Linux: [`linux::L2Receiver`] (AF_PACKET)
-/// - macOS: [`macos::BpfReader`] (BPF)
-/// - Windows: [`windows::NpcapReader`] (NPcap)
+/// - Linux: `linux::L2Receiver` (AF_PACKET)
+/// - macOS: `macos::BpfReader` (BPF)
+/// - Windows: `windows::NpcapReader` (NPcap)
 #[cfg(target_os = "linux")]
 pub type DefaultL2Reader = linux::L2Receiver;
 #[cfg(target_os = "macos")]
@@ -69,9 +69,9 @@ pub type DefaultL2Writer = macos::BpfWriter;
 pub type DefaultL2Writer = windows::NpcapWriter;
 
 /// The default L3 IPv4 packet reader for the current platform.
-/// - Linux: [`linux::L3Receiver`] (raw socket)
-/// - macOS: [`macos::BsdL3Receiver`] (raw socket)
-/// - Windows: [`windows::WinL3Receiver`] (raw socket)
+/// - Linux: `linux::L3Receiver` (raw socket)
+/// - macOS: `macos::BsdL3Receiver` (raw socket)
+/// - Windows: `windows::WinL3Receiver` (raw socket)
 #[cfg(target_os = "linux")]
 pub type DefaultL3Reader = linux::L3Receiver;
 #[cfg(target_os = "macos")]
@@ -88,9 +88,9 @@ pub type DefaultL3Writer = macos::BsdL3Sender;
 pub type DefaultL3Writer = windows::WinL3Sender;
 
 /// The default L3 IPv6 packet reader for the current platform.
-/// - Linux: [`linux::L3ReceiverV6`] (AF_PACKET cooked socket)
-/// - macOS: [`macos::BsdL3ReceiverV6`] (stub until #4 lands)
-/// - Windows: [`windows::WinL3ReceiverV6`] (Npcap capture)
+/// - Linux: `linux::L3ReceiverV6` (AF_PACKET cooked socket)
+/// - macOS: `macos::BsdL3ReceiverV6` (stub until #4 lands)
+/// - Windows: `windows::WinL3ReceiverV6` (Npcap capture)
 #[cfg(target_os = "linux")]
 pub type DefaultL3ReaderV6 = linux::L3ReceiverV6;
 #[cfg(target_os = "macos")]
@@ -99,9 +99,9 @@ pub type DefaultL3ReaderV6 = macos::BsdL3ReceiverV6;
 pub type DefaultL3ReaderV6 = windows::WinL3ReceiverV6;
 
 /// The default L3 IPv6 packet sender for the current platform.
-/// - Linux: [`linux::L3SenderV6`] (IPv6 raw socket)
-/// - macOS: [`macos::BsdL3SenderV6`] (stub until #4 lands)
-/// - Windows: [`windows::WinL3SenderV6`] (IPv6 raw socket, requires Administrator)
+/// - Linux: `linux::L3SenderV6` (IPv6 raw socket)
+/// - macOS: `macos::BsdL3SenderV6` (stub until #4 lands)
+/// - Windows: `windows::WinL3SenderV6` (IPv6 raw socket, requires Administrator)
 #[cfg(target_os = "linux")]
 pub type DefaultL3WriterV6 = linux::L3SenderV6;
 #[cfg(target_os = "macos")]
