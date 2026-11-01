@@ -80,21 +80,21 @@ impl<'a> Iterator for RadiusAttributeIter<'a> {
         Some(match type_ {
             1 => RadiusAttribute::UserName(String::from_utf8_lossy(value).into_owned()),
             2 => RadiusAttribute::UserPassword(value.to_vec()),
-            4 => RadiusAttribute::NasIpAddress(Ipv4Addr::new(
+            4 if value.len() >= 4 => RadiusAttribute::NasIpAddress(Ipv4Addr::new(
                 value[0], value[1], value[2], value[3],
             )),
-            5 => RadiusAttribute::NasPort(u32::from_be_bytes([
+            5 if value.len() >= 4 => RadiusAttribute::NasPort(u32::from_be_bytes([
                 value[0], value[1], value[2], value[3],
             ])),
-            6 => RadiusAttribute::ServiceType(u32::from_be_bytes([
+            6 if value.len() >= 4 => RadiusAttribute::ServiceType(u32::from_be_bytes([
                 value[0], value[1], value[2], value[3],
             ])),
-            7 => RadiusAttribute::FramedProtocol(u32::from_be_bytes([
+            7 if value.len() >= 4 => RadiusAttribute::FramedProtocol(u32::from_be_bytes([
                 value[0], value[1], value[2], value[3],
             ])),
             31 => RadiusAttribute::CallingStationId(String::from_utf8_lossy(value).into_owned()),
             32 => RadiusAttribute::NasIdentifier(String::from_utf8_lossy(value).into_owned()),
-            40 => RadiusAttribute::AcctStatusType(u32::from_be_bytes([
+            40 if value.len() >= 4 => RadiusAttribute::AcctStatusType(u32::from_be_bytes([
                 value[0], value[1], value[2], value[3],
             ])),
             44 => RadiusAttribute::AcctSessionId(String::from_utf8_lossy(value).into_owned()),
@@ -156,5 +156,17 @@ mod tests {
     fn parse_too_short() {
         assert!(RadiusPacket::new(&[]).is_none());
         assert!(RadiusPacket::new(&[0u8; 19]).is_none());
+    }
+
+    #[test]
+    fn short_fixed_length_attributes_are_unknown() {
+        // Type 4 and type 5 attributes with length 2 carry no value.
+        let attrs = [4u8, 2, 5, 2];
+        let pkt = build_pkt(1, 0, &attrs);
+        let p = RadiusPacket::new(&pkt).unwrap();
+        let avps: Vec<_> = p.attributes().collect();
+        assert_eq!(avps.len(), 2);
+        assert!(matches!(&avps[0], RadiusAttribute::Unknown { type_: 4, data } if data.is_empty()));
+        assert!(matches!(&avps[1], RadiusAttribute::Unknown { type_: 5, data } if data.is_empty()));
     }
 }
