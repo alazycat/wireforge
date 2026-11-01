@@ -26,6 +26,7 @@
 //! `list_interfaces()` does not require elevated privileges.
 
 mod common;
+pub mod dummy;
 mod error;
 pub mod traits;
 
