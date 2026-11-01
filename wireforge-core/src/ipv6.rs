@@ -20,12 +20,7 @@ pub struct Ipv6Packet<'a> {
 }
 
 impl<'a> Ipv6Packet<'a> {
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        if buf.len() < IPV6_HEADER_LEN {
-            return None;
-        }
-        Some(Self { buf })
-    }
+    crate::parser_new!(IPV6_HEADER_LEN);
 
     /// Raw bytes backing this packet.
     #[inline]
