@@ -520,6 +520,46 @@ mod tests {
         assert_eq!(parsed.extension_headers().count(), 0);
     }
 
+    /// Characterization: a truncated extension header whose next-header byte
+    /// is readable makes `final_protocol` report that byte, while `payload`
+    /// treats the malformed chain as unusable and returns an empty slice.
+    #[test]
+    fn truncated_extension_header_behavior() {
+        let mut data = vec![
+            0x60, 0x00, 0x00, 0x00, // version, TC, flow label
+            0x00, 0x02, // payload length: 2
+            0x00, // next header: Hop-by-Hop (0)
+            0x40, // hop limit
+        ];
+        data.extend_from_slice(&[0u8; 32]); // src + dst
+        data.extend_from_slice(&[0x3A, 0x00]); // truncated HBH: next=ICMPv6, hdr_ext_len=0
+        assert_eq!(data.len(), IPV6_HEADER_LEN + 2);
+
+        let pkt = Ipv6Packet::new(&data).unwrap();
+        assert_eq!(pkt.final_protocol(), IpProtocol::Icmpv6);
+        assert_eq!(pkt.payload(), &[]);
+        assert_eq!(pkt.extension_headers().count(), 0);
+    }
+
+    /// Characterization: with fewer than two bytes left, `final_protocol`
+    /// keeps the current next-header value and `payload` returns empty.
+    #[test]
+    fn one_byte_extension_header_behavior() {
+        let mut data = vec![
+            0x60, 0x00, 0x00, 0x00, // version, TC, flow label
+            0x00, 0x01, // payload length: 1
+            0x00, // next header: Hop-by-Hop (0)
+            0x40, // hop limit
+        ];
+        data.extend_from_slice(&[0u8; 32]); // src + dst
+        data.push(0x3A); // only one byte of the extension header
+
+        let pkt = Ipv6Packet::new(&data).unwrap();
+        assert_eq!(pkt.final_protocol(), IpProtocol::Unknown(0));
+        assert_eq!(pkt.payload(), &[]);
+        assert_eq!(pkt.extension_headers().count(), 0);
+    }
+
     /// Build and parse roundtrip with valid Fragment extension header (exactly 8 bytes).
     #[test]
     fn builder_fragment_ext_header_roundtrip() {
