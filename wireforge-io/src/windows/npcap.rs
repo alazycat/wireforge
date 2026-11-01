@@ -403,17 +403,31 @@ impl L2Writer for NpcapWriter {
 mod tests {
     use super::*;
 
+    /// Return the loaded Npcap functions, or `None` when Npcap is not installed.
+    ///
+    /// CI runners do not ship Npcap; tests must skip rather than fail there.
+    fn npcap_or_skip() -> Option<&'static NpcapFns> {
+        match get_npcap() {
+            Ok(npcap) => Some(npcap),
+            Err(IoError::Npcap(msg)) if msg.contains("not found") => {
+                eprintln!("skipping: {msg}");
+                None
+            }
+            Err(e) => panic!("unexpected Npcap initialization error: {e}"),
+        }
+    }
+
     #[test]
     fn npcap_available() {
-        assert!(
-            get_npcap().is_ok(),
-            "NPcap should be available on this system"
-        );
+        let _ = npcap_or_skip();
     }
 
     #[test]
     fn list_devices() {
-        let npcap = get_npcap().expect("NPcap should be available");
+        let npcap = match npcap_or_skip() {
+            Some(npcap) => npcap,
+            None => return,
+        };
         let mut alldevs: *mut PcapIfT = std::ptr::null_mut();
         let mut errbuf = vec![0u8; 256];
         let ret =
