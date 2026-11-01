@@ -151,6 +151,22 @@ pub struct DhcpOptionIter<'a> {
     phase: u8,
 }
 
+impl DhcpOptionIter<'_> {
+    /// Move to the next option area enabled by option 52.
+    fn advance_phase(&mut self) -> bool {
+        loop {
+            self.phase += 1;
+            self.pos = 0;
+            match self.phase {
+                1 if self.overload & 1 != 0 => return true,
+                2 if self.overload & 2 != 0 => return true,
+                1 | 2 => continue,
+                _ => return false,
+            }
+        }
+    }
+}
+
 impl<'a> Iterator for DhcpOptionIter<'a> {
     type Item = DhcpOption;
 
@@ -159,22 +175,24 @@ impl<'a> Iterator for DhcpOptionIter<'a> {
             let data = match self.phase {
                 0 => {
                     if self.pos >= self.buf.len() {
-                        self.phase = 1;
-                        self.pos = 0;
+                        if !self.advance_phase() {
+                            return None;
+                        }
                         continue;
                     }
                     &self.buf[self.pos..]
                 }
                 1 => {
-                    if self.overload & 1 == 0 || self.pos >= self.file_buf.len() {
-                        self.phase = 2;
-                        self.pos = 0;
+                    if self.pos >= self.file_buf.len() {
+                        if !self.advance_phase() {
+                            return None;
+                        }
                         continue;
                     }
                     &self.file_buf[self.pos..]
                 }
                 2 => {
-                    if self.overload & 2 == 0 || self.pos >= self.sname_buf.len() {
+                    if self.pos >= self.sname_buf.len() {
                         return None;
                     }
                     &self.sname_buf[self.pos..]
@@ -186,7 +204,10 @@ impl<'a> Iterator for DhcpOptionIter<'a> {
             }
             let code = data[0];
             if code == 0xff {
-                return None;
+                if !self.advance_phase() {
+                    return None;
+                }
+                continue;
             }
             if code == 0 {
                 self.pos += 1;
@@ -280,6 +301,29 @@ mod tests {
         let opts: Vec<_> = pkt.options().collect();
         assert!(matches!(opts[0], DhcpOption::Unknown { code: 1, .. }));
         assert!(matches!(opts[1], DhcpOption::Unknown { code: 51, .. }));
+    }
+
+    #[test]
+    fn options_are_read_from_overloaded_fields() {
+        let mut data = vec![0u8; DHCP_MIN_LEN];
+        data[236..240].copy_from_slice(&DHCP_MAGIC_COOKIE.to_be_bytes());
+        // Option 52: overload = file (1) and sname (2), message type = Offer, end.
+        data.extend_from_slice(&[52, 1, 3, 53, 1, 2, 255]);
+        // File field holds option 12 (hostname); sname field option 15 (domain).
+        data[108..115].copy_from_slice(&[12, 4, b't', b'e', b's', b't', 255]);
+        data[44..51].copy_from_slice(&[15, 4, b'n', b'a', b'm', b'e', 255]);
+
+        let pkt = DhcpPacket::new(&data).unwrap();
+        let opts: Vec<_> = pkt.options().collect();
+        assert!(opts
+            .iter()
+            .any(|o| matches!(o, DhcpOption::MessageType(DhcpMessageType::Offer))));
+        assert!(opts
+            .iter()
+            .any(|o| matches!(o, DhcpOption::HostName(name) if name == "test")));
+        assert!(opts
+            .iter()
+            .any(|o| matches!(o, DhcpOption::DomainName(name) if name == "name")));
     }
 
     #[test]
