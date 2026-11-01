@@ -35,18 +35,23 @@ struct PcapPktHdr {
 type PcapT = *mut std::ffi::c_void;
 
 type PcapOpenLiveFn = unsafe extern "system" fn(
-    device: *const c_char, snaplen: c_int, promisc: c_int, to_ms: c_int, errbuf: *mut c_char,
+    device: *const c_char,
+    snaplen: c_int,
+    promisc: c_int,
+    to_ms: c_int,
+    errbuf: *mut c_char,
 ) -> PcapT;
 
 type PcapNextExFn = unsafe extern "system" fn(
-    p: PcapT, pkt_header: *mut *mut PcapPktHdr, pkt_data: *mut *const c_uchar,
+    p: PcapT,
+    pkt_header: *mut *mut PcapPktHdr,
+    pkt_data: *mut *const c_uchar,
 ) -> c_int;
 
 type PcapCloseFn = unsafe extern "system" fn(p: PcapT);
 
-type PcapFindAllDevsFn = unsafe extern "system" fn(
-    alldevsp: *mut *mut PcapIfT, errbuf: *mut c_char,
-) -> c_int;
+type PcapFindAllDevsFn =
+    unsafe extern "system" fn(alldevsp: *mut *mut PcapIfT, errbuf: *mut c_char) -> c_int;
 
 type PcapFreeAllDevsFn = unsafe extern "system" fn(alldevs: *mut PcapIfT);
 
@@ -70,7 +75,10 @@ extern "system" {
     fn LoadLibraryA(lpFileName: *const u8) -> *mut std::ffi::c_void;
     #[allow(dead_code)]
     fn FreeLibrary(hModule: *mut std::ffi::c_void) -> c_int;
-    fn GetProcAddress(hModule: *mut std::ffi::c_void, lpProcName: *const u8) -> Option<unsafe extern "system" fn()>;
+    fn GetProcAddress(
+        hModule: *mut std::ffi::c_void,
+        lpProcName: *const u8,
+    ) -> Option<unsafe extern "system" fn()>;
 }
 
 fn load_dll(name: &str) -> Result<*mut std::ffi::c_void, IoError> {
@@ -78,7 +86,9 @@ fn load_dll(name: &str) -> Result<*mut std::ffi::c_void, IoError> {
     let ptr = cname.as_ptr() as *const u8;
     let handle = unsafe { LoadLibraryA(ptr) };
     if handle.is_null() {
-        return Err(IoError::Npcap(format!("{name} not found. Install Npcap from https://npcap.com")));
+        return Err(IoError::Npcap(format!(
+            "{name} not found. Install Npcap from https://npcap.com"
+        )));
     }
     Ok(handle)
 }
@@ -114,21 +124,32 @@ unsafe impl Sync for NpcapFns {}
 static NPCAP_FNS: OnceLock<Option<NpcapFns>> = OnceLock::new();
 
 fn get_npcap() -> Result<&'static NpcapFns, IoError> {
-    NPCAP_FNS.get_or_init(|| {
-        let dll = match load_dll("wpcap.dll") {
-            Ok(h) => h,
-            Err(_) => return None,
-        };
-        let open_live: PcapOpenLiveFn = get_proc(dll, "pcap_open_live")?;
-        let next_ex: PcapNextExFn = get_proc(dll, "pcap_next_ex")?;
-        let close: PcapCloseFn = get_proc(dll, "pcap_close")?;
-        let find_all_devs: PcapFindAllDevsFn = get_proc(dll, "pcap_findalldevs")?;
-        let free_all_devs: PcapFreeAllDevsFn = get_proc(dll, "pcap_freealldevs")?;
-        let set_timeout: PcapSetTimeoutFn = get_proc(dll, "pcap_set_timeout")?;
-        Some(NpcapFns { dll, open_live, next_ex, close, find_all_devs, free_all_devs, set_timeout })
-    })
-    .as_ref()
-    .ok_or_else(|| IoError::Npcap("wpcap.dll not found. Install Npcap from https://npcap.com".into()))
+    NPCAP_FNS
+        .get_or_init(|| {
+            let dll = match load_dll("wpcap.dll") {
+                Ok(h) => h,
+                Err(_) => return None,
+            };
+            let open_live: PcapOpenLiveFn = get_proc(dll, "pcap_open_live")?;
+            let next_ex: PcapNextExFn = get_proc(dll, "pcap_next_ex")?;
+            let close: PcapCloseFn = get_proc(dll, "pcap_close")?;
+            let find_all_devs: PcapFindAllDevsFn = get_proc(dll, "pcap_findalldevs")?;
+            let free_all_devs: PcapFreeAllDevsFn = get_proc(dll, "pcap_freealldevs")?;
+            let set_timeout: PcapSetTimeoutFn = get_proc(dll, "pcap_set_timeout")?;
+            Some(NpcapFns {
+                dll,
+                open_live,
+                next_ex,
+                close,
+                find_all_devs,
+                free_all_devs,
+                set_timeout,
+            })
+        })
+        .as_ref()
+        .ok_or_else(|| {
+            IoError::Npcap("wpcap.dll not found. Install Npcap from https://npcap.com".into())
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +166,13 @@ impl NpcapReader {
         let device = CString::new(ifname).map_err(|_| IoError::Parse("invalid interface name"))?;
         let mut errbuf = vec![0u8; 256];
         let handle = unsafe {
-            (npcap.open_live)(device.as_ptr(), 65535, 0, 1000, errbuf.as_mut_ptr() as *mut c_char)
+            (npcap.open_live)(
+                device.as_ptr(),
+                65535,
+                0,
+                1000,
+                errbuf.as_mut_ptr() as *mut c_char,
+            )
         };
         if handle.is_null() {
             let msg = CStr::from_bytes_until_nul(&errbuf)
@@ -176,7 +203,9 @@ impl NpcapReader {
 }
 
 impl L2Reader for NpcapReader {
-    fn recv(&mut self) -> Result<EthernetPacket<'_>, IoError> { self.recv() }
+    fn recv(&mut self) -> Result<EthernetPacket<'_>, IoError> {
+        self.recv()
+    }
 
     fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError> {
         let npcap = get_npcap()?;
@@ -186,7 +215,9 @@ impl L2Reader for NpcapReader {
     }
 
     fn set_promiscuous(&mut self, _on: bool) -> Result<(), IoError> {
-        Err(IoError::Npcap("set_promiscuous: re-create reader with desired promisc mode".into()))
+        Err(IoError::Npcap(
+            "set_promiscuous: re-create reader with desired promisc mode".into(),
+        ))
     }
 }
 
@@ -194,7 +225,9 @@ impl Drop for NpcapReader {
     fn drop(&mut self) {
         if !self.handle.is_null() {
             if let Ok(npcap) = get_npcap() {
-                unsafe { (npcap.close)(self.handle); }
+                unsafe {
+                    (npcap.close)(self.handle);
+                }
             }
         }
     }
@@ -228,7 +261,10 @@ mod tests {
 
     #[test]
     fn npcap_available() {
-        assert!(get_npcap().is_ok(), "NPcap should be available on this system");
+        assert!(
+            get_npcap().is_ok(),
+            "NPcap should be available on this system"
+        );
     }
 
     #[test]
@@ -236,17 +272,22 @@ mod tests {
         let npcap = get_npcap().expect("NPcap should be available");
         let mut alldevs: *mut PcapIfT = std::ptr::null_mut();
         let mut errbuf = vec![0u8; 256];
-        let ret = unsafe { (npcap.find_all_devs)(&mut alldevs, errbuf.as_mut_ptr() as *mut c_char) };
+        let ret =
+            unsafe { (npcap.find_all_devs)(&mut alldevs, errbuf.as_mut_ptr() as *mut c_char) };
         assert_eq!(ret, 0, "pcap_findalldevs should succeed");
         let mut count = 0;
         let mut cur = alldevs;
         while !cur.is_null() {
             let dev = unsafe { &*cur };
             let name = unsafe { CStr::from_ptr(dev.name) }.to_str().unwrap_or("");
-            if !name.is_empty() { count += 1; }
+            if !name.is_empty() {
+                count += 1;
+            }
             cur = dev.next;
         }
-        unsafe { (npcap.free_all_devs)(alldevs); }
+        unsafe {
+            (npcap.free_all_devs)(alldevs);
+        }
         assert!(count > 0, "should find at least one device");
     }
 
@@ -255,15 +296,21 @@ mod tests {
         let npcap = get_npcap().expect("NPcap should be available");
         let mut alldevs: *mut PcapIfT = std::ptr::null_mut();
         let mut errbuf = vec![0u8; 256];
-        unsafe { (npcap.find_all_devs)(&mut alldevs, errbuf.as_mut_ptr() as *mut c_char); }
+        unsafe {
+            (npcap.find_all_devs)(&mut alldevs, errbuf.as_mut_ptr() as *mut c_char);
+        }
 
         let mut loopback_name = None;
         let mut cur = alldevs;
         while !cur.is_null() {
             let dev = unsafe { &*cur };
             let name = unsafe { CStr::from_ptr(dev.name) }.to_str().unwrap_or("");
-            let desc = if dev.description.is_null() { "" } else {
-                unsafe { CStr::from_ptr(dev.description) }.to_str().unwrap_or("")
+            let desc = if dev.description.is_null() {
+                ""
+            } else {
+                unsafe { CStr::from_ptr(dev.description) }
+                    .to_str()
+                    .unwrap_or("")
             };
             if name.contains("Loopback") || desc.contains("Loopback") {
                 loopback_name = Some(name.to_string());
@@ -271,7 +318,9 @@ mod tests {
             }
             cur = dev.next;
         }
-        unsafe { (npcap.free_all_devs)(alldevs); }
+        unsafe {
+            (npcap.free_all_devs)(alldevs);
+        }
 
         let ifname = match loopback_name {
             Some(name) => name,

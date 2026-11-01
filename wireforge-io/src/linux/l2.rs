@@ -135,7 +135,8 @@ impl L2Sender {
     pub fn send(&self, packet: &[u8]) -> Result<usize, IoError> {
         let n = unsafe {
             // SAFETY: transmute sockaddr_ll to sockaddr — same size, packed correctly
-            let addr: &libc::sockaddr = &*(&self.sockaddr as *const libc::sockaddr_ll as *const libc::sockaddr);
+            let addr: &libc::sockaddr =
+                &*(&self.sockaddr as *const libc::sockaddr_ll as *const libc::sockaddr);
             libc::sendto(
                 self.sock.as_raw_fd(),
                 packet.as_ptr() as *const libc::c_void,

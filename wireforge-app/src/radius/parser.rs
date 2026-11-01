@@ -80,9 +80,9 @@ impl<'a> Iterator for RadiusAttributeIter<'a> {
         Some(match type_ {
             1 => RadiusAttribute::UserName(String::from_utf8_lossy(value).into_owned()),
             2 => RadiusAttribute::UserPassword(value.to_vec()),
-            4 if value.len() >= 4 => RadiusAttribute::NasIpAddress(Ipv4Addr::new(
-                value[0], value[1], value[2], value[3],
-            )),
+            4 if value.len() >= 4 => {
+                RadiusAttribute::NasIpAddress(Ipv4Addr::new(value[0], value[1], value[2], value[3]))
+            }
             5 if value.len() >= 4 => RadiusAttribute::NasPort(u32::from_be_bytes([
                 value[0], value[1], value[2], value[3],
             ])),

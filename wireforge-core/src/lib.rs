@@ -14,17 +14,17 @@
 
 extern crate alloc;
 
-pub mod types;
-pub mod util;
-pub mod ether;
-pub mod vlan;
 pub mod arp;
+pub mod ether;
+pub mod gre;
+pub mod icmp;
+pub mod igmp;
 pub mod ipv4;
 pub mod ipv6;
-pub mod icmp;
 pub mod tcp;
+pub mod types;
 pub mod udp;
-pub mod igmp;
-pub mod gre;
+pub mod util;
+pub mod vlan;
 
 pub use util::BuildError;

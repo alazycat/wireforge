@@ -36,13 +36,25 @@ impl<'a> HttpRequest<'a> {
         })
     }
 
-    pub fn method(&self) -> &str { core::str::from_utf8(&self.buf[..self.method_end]).unwrap_or("") }
-    pub fn uri(&self) -> &str { core::str::from_utf8(&self.buf[self.method_end + 1..self.uri_end]).unwrap_or("") }
-    pub fn version(&self) -> &str { core::str::from_utf8(&self.buf[self.uri_end + 1..self.version_end]).unwrap_or("") }
-    pub fn headers(&self) -> HeaderIter<'a> { HeaderIter::new(&self.buf[self.headers_start..self.body_start]) }
-    pub fn body(&self) -> &[u8] { &self.buf[self.body_start..] }
+    pub fn method(&self) -> &str {
+        core::str::from_utf8(&self.buf[..self.method_end]).unwrap_or("")
+    }
+    pub fn uri(&self) -> &str {
+        core::str::from_utf8(&self.buf[self.method_end + 1..self.uri_end]).unwrap_or("")
+    }
+    pub fn version(&self) -> &str {
+        core::str::from_utf8(&self.buf[self.uri_end + 1..self.version_end]).unwrap_or("")
+    }
+    pub fn headers(&self) -> HeaderIter<'a> {
+        HeaderIter::new(&self.buf[self.headers_start..self.body_start])
+    }
+    pub fn body(&self) -> &[u8] {
+        &self.buf[self.body_start..]
+    }
 }
 
 fn find_body_start(data: &[u8]) -> Option<usize> {
-    data.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4)
+    data.windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|p| p + 4)
 }

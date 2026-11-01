@@ -5,7 +5,10 @@ use alloc::vec::Vec;
 use core::net::Ipv4Addr;
 
 use crate::types::IpProtocol;
-use crate::util::{internet_checksum, seal_internet_checksum, read_u16be, read_u32be, write_u16be, write_u32be, BuildError, PacketBuilder};
+use crate::util::{
+    internet_checksum, read_u16be, read_u32be, seal_internet_checksum, write_u16be, write_u32be,
+    BuildError, PacketBuilder,
+};
 
 /// Minimum IPv4 header length in bytes (without options).
 pub const IPV4_MIN_HEADER_LEN: usize = 20;
@@ -32,7 +35,9 @@ impl<'a> Ipv4Packet<'a> {
 
     /// Raw bytes backing this packet.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     #[inline]
     pub fn version(&self) -> u8 {
@@ -264,9 +269,8 @@ mod tests {
 
     // Real IPv4 header: 192.168.10.99 → 172.16.10.12, TCP, TTL=64
     const SAMPLE_IPV4: &[u8] = &[
-        0x45, 0x00, 0x00, 0x3C, 0x1C, 0x46, 0x40, 0x00,
-        0x40, 0x06, 0x00, 0x00, 0xAC, 0x10, 0x0A, 0x63,
-        0xAC, 0x10, 0x0A, 0x0C,
+        0x45, 0x00, 0x00, 0x3C, 0x1C, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xAC, 0x10, 0x0A,
+        0x63, 0xAC, 0x10, 0x0A, 0x0C,
     ];
 
     #[test]
@@ -335,10 +339,9 @@ mod tests {
     #[test]
     fn parse_with_options() {
         // IPv4 header with 4 bytes of options (IHL=6, total header=24)
-        let mut data = vec![0x46u8, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00,
-            0x40, 0x06, 0x00, 0x00,
-            0xC0, 0xA8, 0x01, 0x01, 0xC0, 0xA8, 0x01, 0x02,
-            0x01, 0x02, 0x03, 0x04, // options
+        let mut data = vec![
+            0x46u8, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00, 0x40, 0x06, 0x00, 0x00, 0xC0, 0xA8,
+            0x01, 0x01, 0xC0, 0xA8, 0x01, 0x02, 0x01, 0x02, 0x03, 0x04, // options
             0xAA, 0xBB, // payload
         ];
         // Compute checksum

@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use core::net::Ipv4Addr;
 
 use crate::types::IpProtocol;
-use crate::util::{pseudo_header_checksum, seal_transport_checksum, read_u16be, write_u16be};
+use crate::util::{pseudo_header_checksum, read_u16be, seal_transport_checksum, write_u16be};
 
 pub const UDP_HEADER_LEN: usize = 8;
 
@@ -20,7 +20,9 @@ impl<'a> UdpPacket<'a> {
 
     /// Raw bytes backing this packet.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     #[inline]
     pub fn source_port(&self) -> u16 {
@@ -79,7 +81,10 @@ impl Default for UdpPacketBuilder {
 
 impl UdpPacketBuilder {
     pub fn new() -> Self {
-        Self { buf: vec![0u8; UDP_HEADER_LEN], payload: None }
+        Self {
+            buf: vec![0u8; UDP_HEADER_LEN],
+            payload: None,
+        }
     }
 
     pub fn source_port(mut self, port: u16) -> Self {
@@ -105,7 +110,13 @@ impl UdpPacketBuilder {
         }
         let total_len = packet.len();
         write_u16be(&mut packet[4..6], total_len as u16);
-        seal_transport_checksum(&mut packet, 6, &src.octets(), &dst.octets(), IpProtocol::Udp.into());
+        seal_transport_checksum(
+            &mut packet,
+            6,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Udp.into(),
+        );
         packet
     }
 }
@@ -144,14 +155,9 @@ mod tests {
 
     #[test]
     fn udp_zero_checksum() {
-        let data: &[u8] = &[
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
-        ];
+        let data: &[u8] = &[0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00];
         let pkt = UdpPacket::new(data).unwrap();
-        assert!(pkt.verify_checksum(
-            Ipv4Addr::new(10, 0, 0, 1),
-            Ipv4Addr::new(10, 0, 0, 2),
-        ));
+        assert!(pkt.verify_checksum(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2),));
     }
 
     #[test]

@@ -16,12 +16,21 @@
 //! - pcap/pcapng — packet capture file I/O
 //! - [`AppPacket`] — unified application-layer packet enum
 
-pub mod dns;   pub mod dhcp;  pub mod ntp;
-pub mod http;  pub mod tls;   pub mod ssh;
-pub mod mqtt;  pub mod modbus;
-pub mod radius;pub mod mdns;  pub mod llmnr;
-pub mod netbios; pub mod smb2; pub mod rdp;
+pub mod dhcp;
+pub mod dns;
+pub mod http;
+pub mod llmnr;
+pub mod mdns;
+pub mod modbus;
+pub mod mqtt;
+pub mod netbios;
+pub mod ntp;
 pub mod pcap;
+pub mod radius;
+pub mod rdp;
+pub mod smb2;
+pub mod ssh;
+pub mod tls;
 
 pub mod app_packet;
 pub use app_packet::AppPacket;

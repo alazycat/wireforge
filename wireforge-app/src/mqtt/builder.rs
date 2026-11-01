@@ -22,7 +22,9 @@ impl MqttPacketBuilder {
         vh.extend_from_slice(topic.as_bytes());
         let mut type_byte = 0x30; // Publish
         type_byte |= (qos & 0x03) << 1;
-        if retain { type_byte |= 0x01; }
+        if retain {
+            type_byte |= 0x01;
+        }
         let total = vh.len() + payload.len();
         let mut pkt = vec![type_byte];
         pkt.extend_from_slice(&write_remaining_length(total as u32));

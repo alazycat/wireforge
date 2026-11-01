@@ -110,7 +110,13 @@ pub fn seal_internet_checksum(buf: &mut [u8], csum_offset: usize) {
 /// Zero the 2-byte checksum field at `csum_offset`, compute the TCP/UDP
 /// pseudo-header checksum over `buf`, and write the result back.
 #[inline]
-pub fn seal_transport_checksum(buf: &mut [u8], csum_offset: usize, src: &[u8], dst: &[u8], protocol: u8) {
+pub fn seal_transport_checksum(
+    buf: &mut [u8],
+    csum_offset: usize,
+    src: &[u8],
+    dst: &[u8],
+    protocol: u8,
+) {
     buf[csum_offset] = 0;
     buf[csum_offset + 1] = 0;
     let csum = pseudo_header_checksum(src, dst, protocol, buf);
@@ -126,7 +132,9 @@ macro_rules! parser_new {
     ($min_len:expr) => {
         #[inline]
         pub fn new(buf: &'a [u8]) -> Option<Self> {
-            if buf.len() < $min_len { return None; }
+            if buf.len() < $min_len {
+                return None;
+            }
             Some(Self { buf })
         }
     };
@@ -169,7 +177,10 @@ pub enum BuildError {
     /// Payload exceeds the maximum allowed by this protocol.
     PayloadTooLarge { max: usize, actual: usize },
     /// A field value is out of range.
-    InvalidField { field: &'static str, reason: &'static str },
+    InvalidField {
+        field: &'static str,
+        reason: &'static str,
+    },
 }
 
 impl core::fmt::Display for BuildError {
@@ -230,9 +241,8 @@ mod tests {
     fn checksum_known_ip_header() {
         // A minimal valid IP header (20 bytes, checksum field zeroed)
         let header: [u8; 20] = [
-            0x45, 0x00, 0x00, 0x3C, 0x1C, 0x46, 0x40, 0x00,
-            0x40, 0x06, 0x00, 0x00, 0xAC, 0x10, 0x0A, 0x63,
-            0xAC, 0x10, 0x0A, 0x0C,
+            0x45, 0x00, 0x00, 0x3C, 0x1C, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xAC, 0x10,
+            0x0A, 0x63, 0xAC, 0x10, 0x0A, 0x0C,
         ];
         let checksum = internet_checksum(&header);
         // Verify that header with checksum inserted passes verification
@@ -246,9 +256,10 @@ mod tests {
         // IPv4 pseudo-header + minimal TCP header
         let src = [192u8, 168, 1, 1];
         let dst = [192u8, 168, 1, 2];
-        let tcp_header = [0x00u8, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                          0x50, 0x02, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
-                          0x00, 0x00, 0x00, 0x00];
+        let tcp_header = [
+            0x00u8, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0x02, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
         let csum = pseudo_header_checksum(&src, &dst, 6, &tcp_header);
         // Should compute a valid non-zero value
         assert_ne!(csum, 0);

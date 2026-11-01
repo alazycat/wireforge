@@ -13,9 +13,7 @@ impl<'a> SshBinaryPacket<'a> {
         }
         let packet_len = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
         let padding_len = buf[4] as usize;
-        let payload_len = packet_len
-            .saturating_sub(padding_len)
-            .saturating_sub(1);
+        let payload_len = packet_len.saturating_sub(padding_len).saturating_sub(1);
         Some(Self {
             buf,
             payload_start: 5,
@@ -54,7 +52,10 @@ impl<'a> SshKexInit<'a> {
             return None;
         }
         // Skip type(1) + cookie(16)
-        Some(Self { payload, cursor: 17 })
+        Some(Self {
+            payload,
+            cursor: 17,
+        })
     }
 
     pub fn cookie(&self) -> &[u8; 16] {

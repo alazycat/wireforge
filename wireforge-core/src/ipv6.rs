@@ -24,7 +24,9 @@ impl<'a> Ipv6Packet<'a> {
 
     /// Raw bytes backing this packet.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     #[inline]
     pub fn version(&self) -> u8 {
@@ -165,17 +167,36 @@ impl<'a> ExtensionCursor<'a> {
         let hdr_data = &self.data[..hdr_len];
         self.data = &self.data[hdr_len..];
         self.depth += 1;
-        ExtensionStep::Header { proto, data: hdr_data }
+        ExtensionStep::Header {
+            proto,
+            data: hdr_data,
+        }
     }
 }
 
 /// IPv6 extension header variant.
 #[derive(Debug, Clone)]
 pub enum Ipv6ExtensionHeader<'a> {
-    HopByHop { next_header: IpProtocol, data: &'a [u8] },
-    Routing { next_header: IpProtocol, routing_type: u8, segments_left: u8, data: &'a [u8] },
-    Fragment { next_header: IpProtocol, fragment_offset: u16, more_fragments: bool, id: u32 },
-    Destination { next_header: IpProtocol, data: &'a [u8] },
+    HopByHop {
+        next_header: IpProtocol,
+        data: &'a [u8],
+    },
+    Routing {
+        next_header: IpProtocol,
+        routing_type: u8,
+        segments_left: u8,
+        data: &'a [u8],
+    },
+    Fragment {
+        next_header: IpProtocol,
+        fragment_offset: u16,
+        more_fragments: bool,
+        id: u32,
+    },
+    Destination {
+        next_header: IpProtocol,
+        data: &'a [u8],
+    },
 }
 
 /// Iterator over IPv6 extension headers.
@@ -242,7 +263,11 @@ impl Ipv6PacketBuilder {
     pub fn new() -> Self {
         let mut buf = vec![0u8; IPV6_HEADER_LEN];
         buf[0] = 0x60; // version=6
-        Self { buf, ext_headers: Vec::new(), payload: None }
+        Self {
+            buf,
+            ext_headers: Vec::new(),
+            payload: None,
+        }
     }
 
     pub fn traffic_class(mut self, tc: u8) -> Self {
@@ -293,7 +318,10 @@ impl Ipv6PacketBuilder {
 
     pub fn payload(mut self, data: &[u8]) -> Result<Self, BuildError> {
         if data.len() > 65535 {
-            return Err(BuildError::PayloadTooLarge { max: 65535, actual: data.len() });
+            return Err(BuildError::PayloadTooLarge {
+                max: 65535,
+                actual: data.len(),
+            });
         }
         self.payload = Some(data.to_vec());
         Ok(self)
@@ -352,10 +380,10 @@ mod tests {
         0x00, 0x08, // payload length: 8
         0x3A, // next header: ICMPv6 (58)
         0x40, // hop limit: 64
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // src: ::1
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // dst: ::1
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x01, // src: ::1
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x01, // dst: ::1
     ];
 
     #[test]
@@ -408,9 +436,7 @@ mod tests {
     #[test]
     fn single_ext_header_hop_by_hop() {
         // Hop-by-Hop: next_header=ICMPv6, hdr_ext_len=0 (8 bytes), padding
-        let hbh_data: &[u8] = &[
-            0x3A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
+        let hbh_data: &[u8] = &[0x3A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         let payload = &[0xAA, 0xBB, 0xCC, 0xDD];
         let src = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
         let dst = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2);
@@ -465,14 +491,23 @@ mod tests {
         assert_eq!(ext.len(), 3);
         assert!(matches!(ext[0], Ipv6ExtensionHeader::HopByHop { .. }));
         match &ext[1] {
-            Ipv6ExtensionHeader::Routing { routing_type, segments_left, .. } => {
+            Ipv6ExtensionHeader::Routing {
+                routing_type,
+                segments_left,
+                ..
+            } => {
                 assert_eq!(*routing_type, 0);
                 assert_eq!(*segments_left, 2);
             }
             _ => panic!("expected Routing"),
         }
         match &ext[2] {
-            Ipv6ExtensionHeader::Fragment { fragment_offset, more_fragments, id, .. } => {
+            Ipv6ExtensionHeader::Fragment {
+                fragment_offset,
+                more_fragments,
+                id,
+                ..
+            } => {
                 assert_eq!(*fragment_offset, 1);
                 assert!(more_fragments);
                 assert_eq!(*id, 0x42);
@@ -588,7 +623,12 @@ mod tests {
         let ext: Vec<_> = parsed.extension_headers().collect();
         assert_eq!(ext.len(), 1);
         match &ext[0] {
-            Ipv6ExtensionHeader::Fragment { fragment_offset, more_fragments, id, .. } => {
+            Ipv6ExtensionHeader::Fragment {
+                fragment_offset,
+                more_fragments,
+                id,
+                ..
+            } => {
                 assert_eq!(*fragment_offset, 1);
                 assert!(more_fragments);
                 assert_eq!(*id, 0x12345678);
@@ -607,14 +647,11 @@ mod tests {
             0x00, // next_header = HopByHop (0)
             0x40, // hop_limit = 64
             // src: ::1
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-            // dst: ::1
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-            // HopByHop: next=ICMPv6(58), hdr_ext_len=0, padding
-            0x3A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            // payload
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, // dst: ::1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, // HopByHop: next=ICMPv6(58), hdr_ext_len=0, padding
+            0x3A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // payload
             0xAA, 0xBB,
         ];
         // Fix payload_length = 8 (HBH) + 2 (payload) = 10

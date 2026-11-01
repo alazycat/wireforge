@@ -22,7 +22,9 @@ impl<'a> EthernetPacket<'a> {
 
     /// Raw bytes backing this frame.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     /// Destination MAC address.
     #[inline]
@@ -182,8 +184,7 @@ mod tests {
     fn ethertype_arp() {
         let frame = [
             0xFFu8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // broadcast
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x08, 0x06, // ARP
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x06, // ARP
         ];
         let pkt = EthernetPacket::new(&frame).unwrap();
         assert_eq!(pkt.ethertype(), EtherType::Arp);

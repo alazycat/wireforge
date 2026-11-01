@@ -47,7 +47,8 @@ fn bench_build_tcp(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches,
+criterion_group!(
+    benches,
     bench_build_ipv4,
     bench_build_ethernet,
     bench_build_tcp,

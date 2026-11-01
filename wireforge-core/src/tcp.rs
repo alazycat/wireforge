@@ -5,7 +5,10 @@ use alloc::vec::Vec;
 use core::net::Ipv4Addr;
 
 use crate::types::IpProtocol;
-use crate::util::{pseudo_header_checksum, seal_transport_checksum, read_u16be, read_u32be, write_u16be, write_u32be};
+use crate::util::{
+    pseudo_header_checksum, read_u16be, read_u32be, seal_transport_checksum, write_u16be,
+    write_u32be,
+};
 
 pub const TCP_MIN_HEADER_LEN: usize = 20;
 
@@ -73,7 +76,10 @@ impl<'a> Iterator for TcpOptionsIter<'a> {
             OPT_MSS => {
                 if self.data.len() < 4 {
                     self.data = &[];
-                    return Some(TcpOption::Unknown { kind, data: self.data.to_vec() });
+                    return Some(TcpOption::Unknown {
+                        kind,
+                        data: self.data.to_vec(),
+                    });
                 }
                 let mss = read_u16be(&self.data[2..4]);
                 self.data = &self.data[4..];
@@ -82,7 +88,10 @@ impl<'a> Iterator for TcpOptionsIter<'a> {
             OPT_WINDOW_SCALE => {
                 if self.data.len() < 3 {
                     self.data = &[];
-                    return Some(TcpOption::Unknown { kind, data: self.data.to_vec() });
+                    return Some(TcpOption::Unknown {
+                        kind,
+                        data: self.data.to_vec(),
+                    });
                 }
                 let shift = self.data[2];
                 self.data = &self.data[3..];
@@ -91,7 +100,10 @@ impl<'a> Iterator for TcpOptionsIter<'a> {
             OPT_SACK_PERMITTED => {
                 if self.data.len() < 2 {
                     self.data = &[];
-                    return Some(TcpOption::Unknown { kind, data: self.data.to_vec() });
+                    return Some(TcpOption::Unknown {
+                        kind,
+                        data: self.data.to_vec(),
+                    });
                 }
                 self.data = &self.data[2..];
                 Some(TcpOption::SackPermitted)
@@ -100,7 +112,10 @@ impl<'a> Iterator for TcpOptionsIter<'a> {
                 let len = self.data.get(1).copied().unwrap_or(0) as usize;
                 if len < 2 || self.data.len() < len {
                     self.data = &[];
-                    return Some(TcpOption::Unknown { kind, data: self.data.to_vec() });
+                    return Some(TcpOption::Unknown {
+                        kind,
+                        data: self.data.to_vec(),
+                    });
                 }
                 let blocks_data = &self.data[2..len];
                 let mut blocks = Vec::new();
@@ -115,7 +130,10 @@ impl<'a> Iterator for TcpOptionsIter<'a> {
             OPT_TIMESTAMP => {
                 if self.data.len() < 10 {
                     self.data = &[];
-                    return Some(TcpOption::Unknown { kind, data: self.data.to_vec() });
+                    return Some(TcpOption::Unknown {
+                        kind,
+                        data: self.data.to_vec(),
+                    });
                 }
                 let ts_val = read_u32be(&self.data[2..6]);
                 let ts_ecr = read_u32be(&self.data[6..10]);
@@ -131,7 +149,10 @@ impl<'a> Iterator for TcpOptionsIter<'a> {
                 } else {
                     let remaining = self.data.to_vec();
                     self.data = &[];
-                    Some(TcpOption::Unknown { kind, data: remaining })
+                    Some(TcpOption::Unknown {
+                        kind,
+                        data: remaining,
+                    })
                 }
             }
         }
@@ -158,7 +179,9 @@ impl<'a> TcpPacket<'a> {
 
     /// Raw bytes backing this packet.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     #[inline]
     pub fn source_port(&self) -> u16 {
@@ -287,7 +310,11 @@ impl TcpPacketBuilder {
     pub fn new() -> Self {
         let mut buf = vec![0u8; TCP_MIN_HEADER_LEN];
         buf[12] = DEFAULT_DATA_OFFSET << 4;
-        Self { buf, options: Vec::new(), payload: None }
+        Self {
+            buf,
+            options: Vec::new(),
+            payload: None,
+        }
     }
 
     pub fn source_port(mut self, port: u16) -> Self {
@@ -321,32 +348,56 @@ impl TcpPacketBuilder {
     }
 
     pub fn syn(mut self, on: bool) -> Self {
-        if on { self.buf[13] |= FLAG_SYN; } else { self.buf[13] &= !FLAG_SYN; }
+        if on {
+            self.buf[13] |= FLAG_SYN;
+        } else {
+            self.buf[13] &= !FLAG_SYN;
+        }
         self
     }
 
     pub fn ack(mut self, on: bool) -> Self {
-        if on { self.buf[13] |= FLAG_ACK; } else { self.buf[13] &= !FLAG_ACK; }
+        if on {
+            self.buf[13] |= FLAG_ACK;
+        } else {
+            self.buf[13] &= !FLAG_ACK;
+        }
         self
     }
 
     pub fn fin(mut self, on: bool) -> Self {
-        if on { self.buf[13] |= FLAG_FIN; } else { self.buf[13] &= !FLAG_FIN; }
+        if on {
+            self.buf[13] |= FLAG_FIN;
+        } else {
+            self.buf[13] &= !FLAG_FIN;
+        }
         self
     }
 
     pub fn rst(mut self, on: bool) -> Self {
-        if on { self.buf[13] |= FLAG_RST; } else { self.buf[13] &= !FLAG_RST; }
+        if on {
+            self.buf[13] |= FLAG_RST;
+        } else {
+            self.buf[13] &= !FLAG_RST;
+        }
         self
     }
 
     pub fn psh(mut self, on: bool) -> Self {
-        if on { self.buf[13] |= FLAG_PSH; } else { self.buf[13] &= !FLAG_PSH; }
+        if on {
+            self.buf[13] |= FLAG_PSH;
+        } else {
+            self.buf[13] &= !FLAG_PSH;
+        }
         self
     }
 
     pub fn urg(mut self, on: bool) -> Self {
-        if on { self.buf[13] |= FLAG_URG; } else { self.buf[13] &= !FLAG_URG; }
+        if on {
+            self.buf[13] |= FLAG_URG;
+        } else {
+            self.buf[13] &= !FLAG_URG;
+        }
         self
     }
 
@@ -410,7 +461,13 @@ impl TcpPacketBuilder {
         if let Some(ref p) = self.payload {
             packet.extend_from_slice(p);
         }
-        seal_transport_checksum(&mut packet, 16, &src.octets(), &dst.octets(), IpProtocol::Tcp.into());
+        seal_transport_checksum(
+            &mut packet,
+            16,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Tcp.into(),
+        );
         packet
     }
 }
@@ -428,8 +485,8 @@ mod tests {
         let mut data = vec![0u8; TCP_MIN_HEADER_LEN];
         write_u16be(&mut data[..2], 1234);
         write_u16be(&mut data[2..4], 80);
-        write_u32be(&mut data[4..8], 1);      // seq
-        write_u32be(&mut data[8..12], 0);      // ack
+        write_u32be(&mut data[4..8], 1); // seq
+        write_u32be(&mut data[8..12], 0); // ack
         data[12] = DEFAULT_DATA_OFFSET << 4;
         data[13] = FLAG_SYN;
         write_u16be(&mut data[14..16], 65535); // window
@@ -501,9 +558,17 @@ mod tests {
     #[test]
     fn tcp_options_timestamp() {
         let mut data = sample_tcp_syn();
-        data.extend_from_slice(&[OPT_TIMESTAMP, 10,
-            0x00, 0x00, 0x00, 0x01,  // ts_val
-            0x00, 0x00, 0x00, 0x02,  // ts_ecr
+        data.extend_from_slice(&[
+            OPT_TIMESTAMP,
+            10,
+            0x00,
+            0x00,
+            0x00,
+            0x01, // ts_val
+            0x00,
+            0x00,
+            0x00,
+            0x02, // ts_ecr
         ]);
         // Pad to 4-byte boundary (10 + 2 = 12)
         data.push(OPT_NOOP);
@@ -615,10 +680,18 @@ mod tests {
 
         // Check options
         let opts: Vec<_> = pkt.options().collect();
-        assert!(opts.iter().any(|o| matches!(o, TcpOption::MaximumSegmentSize(1460))));
+        assert!(opts
+            .iter()
+            .any(|o| matches!(o, TcpOption::MaximumSegmentSize(1460))));
         assert!(opts.iter().any(|o| matches!(o, TcpOption::WindowScale(7))));
         assert!(opts.iter().any(|o| matches!(o, TcpOption::SackPermitted)));
-        assert!(opts.iter().any(|o| matches!(o, TcpOption::Timestamp { ts_val: 0x100, ts_ecr: 0x200 })));
+        assert!(opts.iter().any(|o| matches!(
+            o,
+            TcpOption::Timestamp {
+                ts_val: 0x100,
+                ts_ecr: 0x200
+            }
+        )));
     }
 
     #[test]

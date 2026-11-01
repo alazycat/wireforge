@@ -15,7 +15,9 @@ pub struct DnsPacketBuilder {
 }
 
 impl Default for DnsPacketBuilder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DnsPacketBuilder {
@@ -50,22 +52,38 @@ impl DnsPacketBuilder {
     }
 
     pub fn authoritative(mut self, aa: bool) -> Self {
-        if aa { self.header[2] |= 0x04; } else { self.header[2] &= !0x04; }
+        if aa {
+            self.header[2] |= 0x04;
+        } else {
+            self.header[2] &= !0x04;
+        }
         self
     }
 
     pub fn truncated(mut self, tc: bool) -> Self {
-        if tc { self.header[2] |= 0x02; } else { self.header[2] &= !0x02; }
+        if tc {
+            self.header[2] |= 0x02;
+        } else {
+            self.header[2] &= !0x02;
+        }
         self
     }
 
     pub fn recursion_desired(mut self, rd: bool) -> Self {
-        if rd { self.header[2] |= 0x01; } else { self.header[2] &= !0x01; }
+        if rd {
+            self.header[2] |= 0x01;
+        } else {
+            self.header[2] &= !0x01;
+        }
         self
     }
 
     pub fn recursion_available(mut self, ra: bool) -> Self {
-        if ra { self.header[3] |= 0x80; } else { self.header[3] &= !0x80; }
+        if ra {
+            self.header[3] |= 0x80;
+        } else {
+            self.header[3] &= !0x80;
+        }
         self
     }
 
@@ -121,7 +139,13 @@ impl DnsPacketBuilder {
     }
 
     /// Add an additional record.
-    pub fn add_raw_additional(mut self, name: &str, qtype: DnsType, ttl: u32, rdata: &[u8]) -> Self {
+    pub fn add_raw_additional(
+        mut self,
+        name: &str,
+        qtype: DnsType,
+        ttl: u32,
+        rdata: &[u8],
+    ) -> Self {
         let mut entry = encode_name(name);
         let qt: u16 = qtype.into();
         entry.extend_from_slice(&qt.to_be_bytes());

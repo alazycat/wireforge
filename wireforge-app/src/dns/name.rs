@@ -83,7 +83,10 @@ mod tests {
     #[test]
     fn parse_simple_name() {
         // "www.example.com" encoded: 3www7example3com0
-        let data: &[u8] = &[3, b'w', b'w', b'w', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0];
+        let data: &[u8] = &[
+            3, b'w', b'w', b'w', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm',
+            0,
+        ];
         let (name, pos) = parse_name(data, 0).unwrap();
         assert_eq!(name, "www.example.com");
         assert_eq!(pos, data.len());
@@ -93,7 +96,9 @@ mod tests {
     fn parse_compressed_name() {
         // "example.com" at offset 12, then "www.example.com" with pointer
         let mut data = vec![0u8; 12];
-        data.extend_from_slice(&[7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0]);
+        data.extend_from_slice(&[
+            7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0,
+        ]);
         // "www" + pointer to offset 12
         data.extend_from_slice(&[3, b'w', b'w', b'w', 0xC0, 12]);
 
@@ -104,14 +109,16 @@ mod tests {
     #[test]
     fn parse_multi_jump_compression() {
         // Chain: label -> ptr1 -> ptr2 -> "example.com"
-        let name_data: &[u8] = &[7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0];
+        let name_data: &[u8] = &[
+            7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0,
+        ];
         let ptr1: &[u8] = &[3, b'w', b'w', b'w', 0xC0, 0]; // points to name_data
         let ptr2: &[u8] = &[0xC0, 13]; // points to ptr1 (offset 13 = after name_data)
 
         let mut data = Vec::new();
         data.extend_from_slice(name_data); // offset 0
-        data.extend_from_slice(ptr1);      // offset 13
-        data.extend_from_slice(ptr2);      // offset 18
+        data.extend_from_slice(ptr1); // offset 13
+        data.extend_from_slice(ptr2); // offset 18
 
         let (name, _) = parse_name(&data, 19).unwrap();
         assert_eq!(name, "www.example.com");

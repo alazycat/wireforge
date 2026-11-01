@@ -25,7 +25,9 @@ pub fn set_socket_timeout(fd: i32, dur: Option<Duration>) -> Result<(), crate::e
             std::mem::size_of::<libc::timeval>() as libc::socklen_t,
         ) < 0
         {
-            return Err(crate::error::IoError::Socket(std::io::Error::last_os_error()));
+            return Err(crate::error::IoError::Socket(
+                std::io::Error::last_os_error(),
+            ));
         }
     }
     Ok(())

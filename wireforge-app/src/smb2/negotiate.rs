@@ -1,13 +1,19 @@
 //! SMB2 negotiate protocol request and response parsers.
 
-pub struct Smb2NegotiateRequest<'a> { buf: &'a [u8] }
+pub struct Smb2NegotiateRequest<'a> {
+    buf: &'a [u8],
+}
 
 impl<'a> Smb2NegotiateRequest<'a> {
     pub fn parse(buf: &'a [u8]) -> Option<Self> {
         // header(36) = struct_size(2) + dialect_count(2) + sec_mode(2) + reserved(2)
         //             + capabilities(4) + client_guid(16) + client_start_time(8)
-        if buf.len() < 36 { return None; }
-        if u16::from_le_bytes([buf[0], buf[1]]) != 36 { return None; }
+        if buf.len() < 36 {
+            return None;
+        }
+        if u16::from_le_bytes([buf[0], buf[1]]) != 36 {
+            return None;
+        }
         Some(Self { buf })
     }
 
@@ -40,7 +46,9 @@ impl<'a> Smb2NegotiateRequest<'a> {
     }
 }
 
-pub struct Smb2NegotiateResponse<'a> { buf: &'a [u8] }
+pub struct Smb2NegotiateResponse<'a> {
+    buf: &'a [u8],
+}
 
 impl<'a> Smb2NegotiateResponse<'a> {
     pub fn parse(buf: &'a [u8]) -> Option<Self> {
@@ -48,8 +56,12 @@ impl<'a> Smb2NegotiateResponse<'a> {
         //             + server_guid(16) + capabilities(4) + max_transact(4) + max_read(4)
         //             + max_write(4) + system_time(8) + server_start_time(8)
         //             + sec_buf_offset(2) + sec_buf_len(2) + reserved2(4) + padding(1)
-        if buf.len() < 65 { return None; }
-        if u16::from_le_bytes([buf[0], buf[1]]) != 65 { return None; }
+        if buf.len() < 65 {
+            return None;
+        }
+        if u16::from_le_bytes([buf[0], buf[1]]) != 65 {
+            return None;
+        }
         Some(Self { buf })
     }
 
@@ -79,15 +91,27 @@ impl<'a> Smb2NegotiateResponse<'a> {
 
     pub fn system_time(&self) -> u64 {
         u64::from_le_bytes([
-            self.buf[40], self.buf[41], self.buf[42], self.buf[43],
-            self.buf[44], self.buf[45], self.buf[46], self.buf[47],
+            self.buf[40],
+            self.buf[41],
+            self.buf[42],
+            self.buf[43],
+            self.buf[44],
+            self.buf[45],
+            self.buf[46],
+            self.buf[47],
         ])
     }
 
     pub fn server_start_time(&self) -> u64 {
         u64::from_le_bytes([
-            self.buf[48], self.buf[49], self.buf[50], self.buf[51],
-            self.buf[52], self.buf[53], self.buf[54], self.buf[55],
+            self.buf[48],
+            self.buf[49],
+            self.buf[50],
+            self.buf[51],
+            self.buf[52],
+            self.buf[53],
+            self.buf[54],
+            self.buf[55],
         ])
     }
 }

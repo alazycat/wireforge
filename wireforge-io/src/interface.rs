@@ -34,8 +34,8 @@ pub fn list_interfaces() -> Result<Vec<Interface>, IoError> {
 
 #[cfg(target_os = "linux")]
 fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
-    use std::os::fd::AsRawFd;
     use socket2::{Domain, Socket, Type};
+    use std::os::fd::AsRawFd;
 
     let sock = Socket::new(Domain::IPV4, Type::DGRAM, None)?;
     let fd = sock.as_raw_fd();
@@ -70,9 +70,17 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
         copy_ifname(&mut ifr_hw, &name);
         let mac = if unsafe { libc::ioctl(fd, libc::SIOCGIFHWADDR, &mut ifr_hw) } >= 0 {
             let sa = unsafe { &ifr_hw.ifr_ifru.ifru_hwaddr };
-            Some([sa.sa_data[0] as u8, sa.sa_data[1] as u8, sa.sa_data[2] as u8,
-                  sa.sa_data[3] as u8, sa.sa_data[4] as u8, sa.sa_data[5] as u8])
-        } else { None };
+            Some([
+                sa.sa_data[0] as u8,
+                sa.sa_data[1] as u8,
+                sa.sa_data[2] as u8,
+                sa.sa_data[3] as u8,
+                sa.sa_data[4] as u8,
+                sa.sa_data[5] as u8,
+            ])
+        } else {
+            None
+        };
 
         // IP address
         let mut ifr_addr = unsafe { std::mem::zeroed::<libc::ifreq>() };
@@ -80,20 +88,39 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
         let ips = if unsafe { libc::ioctl(fd, libc::SIOCGIFADDR, &mut ifr_addr) } >= 0 {
             let sa = unsafe { &ifr_addr.ifr_ifru.ifru_addr };
             if sa.sa_family as i32 == libc::AF_INET {
-                let addr_bytes = unsafe { (*(sa as *const libc::sockaddr as *const libc::sockaddr_in)).sin_addr.s_addr };
+                let addr_bytes = unsafe {
+                    (*(sa as *const libc::sockaddr as *const libc::sockaddr_in))
+                        .sin_addr
+                        .s_addr
+                };
                 let ip = IpAddr::V4(std::net::Ipv4Addr::from(u32::from_be(addr_bytes)));
                 vec![ip]
-            } else { vec![] }
-        } else { vec![] };
+            } else {
+                vec![]
+            }
+        } else {
+            vec![]
+        };
 
-        interfaces.push(Interface { name, friendly_name: None, mac_address: mac, ips, is_loopback, is_up });
+        interfaces.push(Interface {
+            name,
+            friendly_name: None,
+            mac_address: mac,
+            ips,
+            is_loopback,
+            is_up,
+        });
     }
     Ok(interfaces)
 }
 
 #[cfg(target_os = "linux")]
 fn cstr_to_string(cstr: &[i8]) -> String {
-    let bytes: Vec<u8> = cstr.iter().take_while(|&&b| b != 0).map(|&b| b as u8).collect();
+    let bytes: Vec<u8> = cstr
+        .iter()
+        .take_while(|&&b| b != 0)
+        .map(|&b| b as u8)
+        .collect();
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
@@ -101,7 +128,8 @@ fn cstr_to_string(cstr: &[i8]) -> String {
 fn copy_ifname(ifr: &mut libc::ifreq, name: &str) {
     let bytes = name.as_bytes();
     let len = bytes.len().min(ifr.ifr_name.len() - 1);
-    ifr.ifr_name[..len].copy_from_slice(unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const i8, len) });
+    ifr.ifr_name[..len]
+        .copy_from_slice(unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const i8, len) });
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +173,9 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
                 libc::AF_LINK => {
                     let sdl = unsafe { &*(ifa.ifa_addr as *const libc::sockaddr_dl) };
                     if sdl.sdl_alen == 6 {
-                        let mac_addr = unsafe { *(sdl.sdl_data.as_ptr().offset(sdl.sdl_nlen as isize) as *const [u8; 6]) };
+                        let mac_addr = unsafe {
+                            *(sdl.sdl_data.as_ptr().offset(sdl.sdl_nlen as isize) as *const [u8; 6])
+                        };
                         entry.mac = Some(mac_addr);
                     }
                 }
@@ -164,21 +194,28 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
         }
         cur = ifa.ifa_next;
     }
-    unsafe { libc::freeifaddrs(ifap); }
+    unsafe {
+        libc::freeifaddrs(ifap);
+    }
 
-    Ok(map.into_values().map(|info| Interface {
-        name: info.name,
-        friendly_name: None,
-        mac_address: info.mac,
-        ips: info.ips,
-        is_loopback: info.is_loopback,
-        is_up: info.is_up,
-    }).collect())
+    Ok(map
+        .into_values()
+        .map(|info| Interface {
+            name: info.name,
+            friendly_name: None,
+            mac_address: info.mac,
+            ips: info.ips,
+            is_loopback: info.is_loopback,
+            is_up: info.is_up,
+        })
+        .collect())
 }
 
 #[cfg(target_os = "macos")]
 fn cstr_to_string_osx(ptr: *const libc::c_char) -> String {
-    if ptr.is_null() { return String::new(); }
+    if ptr.is_null() {
+        return String::new();
+    }
     let bytes = unsafe { std::ffi::CStr::from_ptr(ptr).to_bytes() };
     String::from_utf8_lossy(bytes).into_owned()
 }
@@ -201,7 +238,7 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
         length: u32,
         _flags: u32,
         next: *mut IpAdapterUnicastAddress,
-        sockaddr_ptr: *const u8,   // LPSOCKADDR
+        sockaddr_ptr: *const u8, // LPSOCKADDR
         sockaddr_len: i32,
     }
 
@@ -234,12 +271,32 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
 
     // First call: get required size
     let mut size: u32 = 0;
-    let ret = unsafe { GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, std::ptr::null(), std::ptr::null_mut(), &mut size) };
-    if ret != 111 { return Ok(vec![]); } // ERROR_BUFFER_OVERFLOW
+    let ret = unsafe {
+        GetAdaptersAddresses(
+            AF_UNSPEC,
+            GAA_FLAG_INCLUDE_PREFIX,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            &mut size,
+        )
+    };
+    if ret != 111 {
+        return Ok(vec![]);
+    } // ERROR_BUFFER_OVERFLOW
 
     let mut buf = vec![0u8; size as usize];
-    let ret = unsafe { GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, std::ptr::null(), buf.as_mut_ptr() as *mut IpAdapterAddresses, &mut size) };
-    if ret != 0 { return Ok(vec![]); }
+    let ret = unsafe {
+        GetAdaptersAddresses(
+            AF_UNSPEC,
+            GAA_FLAG_INCLUDE_PREFIX,
+            std::ptr::null(),
+            buf.as_mut_ptr() as *mut IpAdapterAddresses,
+            &mut size,
+        )
+    };
+    if ret != 0 {
+        return Ok(vec![]);
+    }
 
     let mut interfaces = Vec::new();
     let mut cur = buf.as_ptr() as *const IpAdapterAddresses;
@@ -251,9 +308,17 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
         let friendly_name = None; // field not directly accessible without offset; skip for now
 
         let mac = if a.physical_address_length == 6 {
-            Some([a.physical_address[0], a.physical_address[1], a.physical_address[2],
-                  a.physical_address[3], a.physical_address[4], a.physical_address[5]])
-        } else { None };
+            Some([
+                a.physical_address[0],
+                a.physical_address[1],
+                a.physical_address[2],
+                a.physical_address[3],
+                a.physical_address[4],
+                a.physical_address[5],
+            ])
+        } else {
+            None
+        };
 
         let mut ips = Vec::new();
         let mut ua = a.first_unicast_address;
@@ -262,11 +327,13 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
             if !u.sockaddr_ptr.is_null() {
                 let family = unsafe { *(u.sockaddr_ptr as *const u16) };
                 match family {
-                    2 => { // AF_INET
+                    2 => {
+                        // AF_INET
                         let b = unsafe { std::slice::from_raw_parts(u.sockaddr_ptr.offset(4), 4) };
                         ips.push(IpAddr::V4(Ipv4Addr::new(b[0], b[1], b[2], b[3])));
                     }
-                    23 => { // AF_INET6
+                    23 => {
+                        // AF_INET6
                         let b = unsafe { std::slice::from_raw_parts(u.sockaddr_ptr.offset(8), 16) };
                         let mut arr = [0u8; 16];
                         arr.copy_from_slice(b);
@@ -295,19 +362,23 @@ fn platform_list_interfaces() -> Result<Vec<Interface>, IoError> {
 
 #[cfg(target_os = "windows")]
 fn wide_to_string(ptr: *const u8) -> String {
-    if ptr.is_null() { return String::new(); }
+    if ptr.is_null() {
+        return String::new();
+    }
     let len = unsafe {
         let mut end = ptr;
         loop {
             let w = u16::from_le_bytes([*end, *(end.offset(1))]);
-            if w == 0 { break; }
+            if w == 0 {
+                break;
+            }
             end = end.offset(2);
         }
         (end as usize - ptr as usize) / 2
     };
-    let wide: Vec<u16> = (0..len).map(|i| unsafe {
-        u16::from_le_bytes([*ptr.add(i*2), *ptr.add(i*2+1)])
-    }).collect();
+    let wide: Vec<u16> = (0..len)
+        .map(|i| unsafe { u16::from_le_bytes([*ptr.add(i * 2), *ptr.add(i * 2 + 1)]) })
+        .collect();
     String::from_utf16_lossy(&wide)
 }
 
@@ -328,6 +399,9 @@ mod tests {
     #[test]
     fn list_interfaces_has_loopback() {
         let ifaces = list_interfaces().expect("list_interfaces should succeed");
-        assert!(ifaces.iter().any(|i| i.is_loopback), "should contain loopback");
+        assert!(
+            ifaces.iter().any(|i| i.is_loopback),
+            "should contain loopback"
+        );
     }
 }

@@ -5,7 +5,10 @@ use alloc::vec::Vec;
 use core::net::Ipv6Addr;
 
 use crate::types::IpProtocol;
-use crate::util::{internet_checksum, pseudo_header_checksum, seal_internet_checksum, seal_transport_checksum, read_u16be, read_u32be, write_u16be, PacketBuilder};
+use crate::util::{
+    internet_checksum, pseudo_header_checksum, read_u16be, read_u32be, seal_internet_checksum,
+    seal_transport_checksum, write_u16be, PacketBuilder,
+};
 
 // ---------------------------------------------------------------------------
 // ICMPv4 constants
@@ -74,7 +77,9 @@ impl<'a> IcmpPacket<'a> {
 
     /// Raw bytes backing this packet.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     #[inline]
     pub fn type_(&self) -> u8 {
@@ -266,7 +271,9 @@ impl<'a> Icmpv6Packet<'a> {
 
     /// Raw bytes backing this packet.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     #[inline]
     pub fn type_(&self) -> u8 {
@@ -305,16 +312,40 @@ impl<'a> Icmpv6Packet<'a> {
         let buf = self.buf;
         match self.type_() {
             ICMPV6_TYPE_ECHO_REQUEST => {
-                let id = if buf.len() >= 6 { read_u16be(&buf[4..6]) } else { 0 };
-                let seq = if buf.len() >= 8 { read_u16be(&buf[6..8]) } else { 0 };
+                let id = if buf.len() >= 6 {
+                    read_u16be(&buf[4..6])
+                } else {
+                    0
+                };
+                let seq = if buf.len() >= 8 {
+                    read_u16be(&buf[6..8])
+                } else {
+                    0
+                };
                 let data = if buf.len() > 8 { &buf[8..] } else { &[] };
-                Icmpv6Message::EchoRequest { identifier: id, sequence_number: seq, data }
+                Icmpv6Message::EchoRequest {
+                    identifier: id,
+                    sequence_number: seq,
+                    data,
+                }
             }
             ICMPV6_TYPE_ECHO_REPLY => {
-                let id = if buf.len() >= 6 { read_u16be(&buf[4..6]) } else { 0 };
-                let seq = if buf.len() >= 8 { read_u16be(&buf[6..8]) } else { 0 };
+                let id = if buf.len() >= 6 {
+                    read_u16be(&buf[4..6])
+                } else {
+                    0
+                };
+                let seq = if buf.len() >= 8 {
+                    read_u16be(&buf[6..8])
+                } else {
+                    0
+                };
                 let data = if buf.len() > 8 { &buf[8..] } else { &[] };
-                Icmpv6Message::EchoReply { identifier: id, sequence_number: seq, data }
+                Icmpv6Message::EchoReply {
+                    identifier: id,
+                    sequence_number: seq,
+                    data,
+                }
             }
             ICMPV6_TYPE_NEIGHBOR_SOLICIT => {
                 let target = if buf.len() >= 24 {
@@ -324,7 +355,10 @@ impl<'a> Icmpv6Packet<'a> {
                     Ipv6Addr::UNSPECIFIED
                 };
                 let options = if buf.len() > 24 { &buf[24..] } else { &[] };
-                Icmpv6Message::NeighborSolicitation { target_address: target, options }
+                Icmpv6Message::NeighborSolicitation {
+                    target_address: target,
+                    options,
+                }
             }
             ICMPV6_TYPE_NEIGHBOR_ADVERT => {
                 let flags = if buf.len() >= 8 { buf[4] } else { 0 };
@@ -335,7 +369,11 @@ impl<'a> Icmpv6Packet<'a> {
                     Ipv6Addr::UNSPECIFIED
                 };
                 let options = if buf.len() > 24 { &buf[24..] } else { &[] };
-                Icmpv6Message::NeighborAdvertisement { flags, target_address: target, options }
+                Icmpv6Message::NeighborAdvertisement {
+                    flags,
+                    target_address: target,
+                    options,
+                }
             }
             ICMPV6_TYPE_ROUTER_SOLICIT => {
                 let options = if buf.len() > 8 { &buf[8..] } else { &[] };
@@ -344,12 +382,29 @@ impl<'a> Icmpv6Packet<'a> {
             ICMPV6_TYPE_ROUTER_ADVERT => {
                 let hop_limit = if buf.len() >= 8 { buf[4] } else { 0 };
                 let flags = if buf.len() >= 8 { buf[5] } else { 0 };
-                let router_lifetime = if buf.len() >= 8 { read_u16be(&buf[6..8]) } else { 0 };
-                let reachable_time = if buf.len() >= 12 { read_u32be(&buf[8..12]) } else { 0 };
-                let retrans_timer = if buf.len() >= 16 { read_u32be(&buf[12..16]) } else { 0 };
+                let router_lifetime = if buf.len() >= 8 {
+                    read_u16be(&buf[6..8])
+                } else {
+                    0
+                };
+                let reachable_time = if buf.len() >= 12 {
+                    read_u32be(&buf[8..12])
+                } else {
+                    0
+                };
+                let retrans_timer = if buf.len() >= 16 {
+                    read_u32be(&buf[12..16])
+                } else {
+                    0
+                };
                 let options = if buf.len() > 16 { &buf[16..] } else { &[] };
                 Icmpv6Message::RouterAdvertisement {
-                    hop_limit, flags, router_lifetime, reachable_time, retrans_timer, options,
+                    hop_limit,
+                    flags,
+                    router_lifetime,
+                    reachable_time,
+                    retrans_timer,
+                    options,
                 }
             }
             _ => Icmpv6Message::Unknown {
@@ -381,7 +436,10 @@ impl Icmpv6PacketBuilder {
         let mut buf = vec![0u8; ICMPV6_HEADER_LEN];
         buf[0] = type_;
         buf[1] = code;
-        Self { buf, body: Vec::new() }
+        Self {
+            buf,
+            body: Vec::new(),
+        }
     }
 
     pub fn echo_request() -> Self {
@@ -419,7 +477,13 @@ impl Icmpv6PacketBuilder {
     pub fn build(self, src: Ipv6Addr, dst: Ipv6Addr) -> Vec<u8> {
         let mut packet = self.buf;
         packet.extend_from_slice(&self.body);
-        seal_transport_checksum(&mut packet, 2, &src.octets(), &dst.octets(), IpProtocol::Icmpv6.into());
+        seal_transport_checksum(
+            &mut packet,
+            2,
+            &src.octets(),
+            &dst.octets(),
+            IpProtocol::Icmpv6.into(),
+        );
         packet
     }
 }
@@ -449,7 +513,11 @@ mod tests {
         assert_eq!(pkt.payload(), &[0x41, 0x42, 0x43, 0x44]);
 
         match pkt.message() {
-            IcmpMessage::EchoRequest { identifier, sequence_number, data } => {
+            IcmpMessage::EchoRequest {
+                identifier,
+                sequence_number,
+                data,
+            } => {
                 assert_eq!(identifier, 1);
                 assert_eq!(sequence_number, 2);
                 assert_eq!(data, &[0x41, 0x42, 0x43, 0x44]);
@@ -466,7 +534,11 @@ mod tests {
         ];
         let pkt = IcmpPacket::new(data).unwrap();
         match pkt.message() {
-            IcmpMessage::EchoReply { identifier, sequence_number, .. } => {
+            IcmpMessage::EchoReply {
+                identifier,
+                sequence_number,
+                ..
+            } => {
                 assert_eq!(identifier, 3);
                 assert_eq!(sequence_number, 4);
             }
@@ -524,7 +596,11 @@ mod tests {
         let pkt = IcmpPacket::new(&pkt_bytes).unwrap();
         assert!(pkt.verify_checksum());
         match pkt.message() {
-            IcmpMessage::EchoRequest { identifier, sequence_number, .. } => {
+            IcmpMessage::EchoRequest {
+                identifier,
+                sequence_number,
+                ..
+            } => {
                 assert_eq!(identifier, 0x1234);
                 assert_eq!(sequence_number, 1);
             }
@@ -544,7 +620,11 @@ mod tests {
         let pkt = Icmpv6Packet::new(data).unwrap();
         assert_eq!(pkt.type_(), 128);
         match pkt.message() {
-            Icmpv6Message::EchoRequest { identifier, sequence_number, data } => {
+            Icmpv6Message::EchoRequest {
+                identifier,
+                sequence_number,
+                data,
+            } => {
                 assert_eq!(identifier, 5);
                 assert_eq!(sequence_number, 6);
                 assert_eq!(data, &[0xDE, 0xAD]);
@@ -555,13 +635,14 @@ mod tests {
 
     #[test]
     fn parse_icmpv6_echo_reply() {
-        let data: &[u8] = &[
-            0x81, 0x00, 0x00, 0x00,
-            0x00, 0x07, 0x00, 0x08,
-        ];
+        let data: &[u8] = &[0x81, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x08];
         let pkt = Icmpv6Packet::new(data).unwrap();
         match pkt.message() {
-            Icmpv6Message::EchoReply { identifier, sequence_number, .. } => {
+            Icmpv6Message::EchoReply {
+                identifier,
+                sequence_number,
+                ..
+            } => {
                 assert_eq!(identifier, 7);
                 assert_eq!(sequence_number, 8);
             }
@@ -579,7 +660,10 @@ mod tests {
 
         let pkt = Icmpv6Packet::new(&data).unwrap();
         match pkt.message() {
-            Icmpv6Message::NeighborSolicitation { target_address, options } => {
+            Icmpv6Message::NeighborSolicitation {
+                target_address,
+                options,
+            } => {
                 assert_eq!(target_address, target);
                 assert_eq!(options.len(), 4);
             }
@@ -597,7 +681,11 @@ mod tests {
 
         let pkt = Icmpv6Packet::new(&data).unwrap();
         match pkt.message() {
-            Icmpv6Message::NeighborAdvertisement { flags, target_address, .. } => {
+            Icmpv6Message::NeighborAdvertisement {
+                flags,
+                target_address,
+                ..
+            } => {
                 assert_eq!(flags, 0x60);
                 assert_eq!(target_address, target);
             }
@@ -634,8 +722,12 @@ mod tests {
         let pkt = Icmpv6Packet::new(&data).unwrap();
         match pkt.message() {
             Icmpv6Message::RouterAdvertisement {
-                hop_limit, flags, router_lifetime,
-                reachable_time, retrans_timer, options,
+                hop_limit,
+                flags,
+                router_lifetime,
+                reachable_time,
+                retrans_timer,
+                options,
             } => {
                 assert_eq!(hop_limit, 64);
                 assert_eq!(flags, 0x08);
@@ -667,7 +759,11 @@ mod tests {
         let pkt = Icmpv6Packet::new(&pkt_bytes).unwrap();
         assert!(pkt.verify_checksum(src, dst));
         match pkt.message() {
-            Icmpv6Message::EchoRequest { identifier, sequence_number, .. } => {
+            Icmpv6Message::EchoRequest {
+                identifier,
+                sequence_number,
+                ..
+            } => {
                 assert_eq!(identifier, 0x42);
                 assert_eq!(sequence_number, 1);
             }

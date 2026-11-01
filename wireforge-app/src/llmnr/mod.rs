@@ -18,8 +18,12 @@ impl<'a> LlmnrPacket<'a> {
         DnsPacket::new(buf).map(|dns| Self { dns })
     }
 
-    pub fn is_query(&self) -> bool { !self.dns.qr() }
-    pub fn is_response(&self) -> bool { self.dns.qr() }
+    pub fn is_query(&self) -> bool {
+        !self.dns.qr()
+    }
+    pub fn is_response(&self) -> bool {
+        self.dns.qr()
+    }
 
     /// LLMNR queries must contain exactly one question (RFC 4795 §2.3).
     pub fn is_valid_query(&self) -> bool {
@@ -32,8 +36,12 @@ impl<'a> LlmnrPacket<'a> {
         self.dns.qr() && (self.dns.flags() & 0x0040) != 0
     }
 
-    pub fn questions(&self) -> DnsQuestionIter<'a> { self.dns.questions() }
-    pub fn answers(&self) -> DnsRecordIter<'a> { self.dns.answers() }
+    pub fn questions(&self) -> DnsQuestionIter<'a> {
+        self.dns.questions()
+    }
+    pub fn answers(&self) -> DnsRecordIter<'a> {
+        self.dns.answers()
+    }
 }
 
 #[cfg(test)]

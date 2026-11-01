@@ -20,17 +20,29 @@ impl<R: Read> PcapNgReader<R> {
         let block_type = u32::from_be_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]);
         let _block_len = u32::from_be_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]);
         // SHB has type 0x0A0D0D0A
-        let byte_order = if block_type == 0x0A0D0D0A { Endianness::Big } else { Endianness::Little };
-        Ok(Self { reader, link_type: None, byte_order })
+        let byte_order = if block_type == 0x0A0D0D0A {
+            Endianness::Big
+        } else {
+            Endianness::Little
+        };
+        Ok(Self {
+            reader,
+            link_type: None,
+            byte_order,
+        })
     }
 
-    pub fn link_type(&self) -> Option<LinkType> { self.link_type }
+    pub fn link_type(&self) -> Option<LinkType> {
+        self.link_type
+    }
 }
 
 impl<R: Read> PacketCaptureReader for PcapNgReader<R> {
     type Error = std::io::Error;
 
-    fn link_type(&self) -> Option<LinkType> { self.link_type }
+    fn link_type(&self) -> Option<LinkType> {
+        self.link_type
+    }
 
     fn next_packet(&mut self) -> Option<Result<(std::time::Duration, Vec<u8>), Self::Error>> {
         loop {
@@ -51,16 +63,23 @@ impl<R: Read> Iterator for PcapNgReader<R> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut hdr = [0u8; 8];
         match self.reader.read_exact(&mut hdr) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return None,
             Err(e) => return Some(Err(e)),
         }
         let block_type = read_u32(&hdr[0..4], self.byte_order);
         let block_len = read_u32(&hdr[4..8], self.byte_order) as usize;
-        if block_len < 12 { return Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "block too short"))); }
+        if block_len < 12 {
+            return Some(Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "block too short",
+            )));
+        }
         let body_len = block_len - 12;
         let mut body = vec![0u8; body_len];
-        if let Err(e) = self.reader.read_exact(&mut body) { return Some(Err(e)); }
+        if let Err(e) = self.reader.read_exact(&mut body) {
+            return Some(Err(e));
+        }
         // Read trailing block length
         let mut tail = [0u8; 4];
         let _ = self.reader.read_exact(&mut tail);
@@ -85,9 +104,15 @@ impl<R: Read> Iterator for PcapNgReader<R> {
                 let cap_len = read_u32(&body[12..16], self.byte_order) as usize;
                 let ts = Duration::new(ts_hi, (ts_lo / 1000) as u32);
                 let data = body[20..20 + cap_len].to_vec();
-                PcapNgBlock::EnhancedPacket { timestamp: ts, data }
+                PcapNgBlock::EnhancedPacket {
+                    timestamp: ts,
+                    data,
+                }
             }
-            _ => PcapNgBlock::Unknown { block_type, data: body },
+            _ => PcapNgBlock::Unknown {
+                block_type,
+                data: body,
+            },
         };
         Some(Ok(block))
     }
@@ -95,9 +120,15 @@ impl<R: Read> Iterator for PcapNgReader<R> {
 
 #[inline]
 fn read_u16(buf: &[u8], endian: Endianness) -> u16 {
-    match endian { Endianness::Big => u16::from_be_bytes([buf[0], buf[1]]), Endianness::Little => u16::from_le_bytes([buf[0], buf[1]]) }
+    match endian {
+        Endianness::Big => u16::from_be_bytes([buf[0], buf[1]]),
+        Endianness::Little => u16::from_le_bytes([buf[0], buf[1]]),
+    }
 }
 #[inline]
 fn read_u32(buf: &[u8], endian: Endianness) -> u32 {
-    match endian { Endianness::Big => u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]), Endianness::Little => u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) }
+    match endian {
+        Endianness::Big => u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
+        Endianness::Little => u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
+    }
 }

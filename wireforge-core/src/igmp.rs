@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::net::Ipv4Addr;
 
-use crate::util::{internet_checksum, seal_internet_checksum, read_u16be, PacketBuilder};
+use crate::util::{internet_checksum, read_u16be, seal_internet_checksum, PacketBuilder};
 
 pub const IGMP_MIN_LEN: usize = 8;
 
@@ -72,16 +72,31 @@ impl<'a> IgmpPacket<'a> {
 
     /// Raw bytes backing this packet.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
-    #[inline] pub fn type_(&self) -> u8 { self.buf[0] }
-    #[inline] pub fn max_response(&self) -> u8 { self.buf[1] }
-    #[inline] pub fn checksum(&self) -> u16 { read_u16be(&self.buf[2..4]) }
-    #[inline] pub fn group_address(&self) -> Ipv4Addr {
+    #[inline]
+    pub fn type_(&self) -> u8 {
+        self.buf[0]
+    }
+    #[inline]
+    pub fn max_response(&self) -> u8 {
+        self.buf[1]
+    }
+    #[inline]
+    pub fn checksum(&self) -> u16 {
+        read_u16be(&self.buf[2..4])
+    }
+    #[inline]
+    pub fn group_address(&self) -> Ipv4Addr {
         let b = &self.buf[4..8];
         Ipv4Addr::new(b[0], b[1], b[2], b[3])
     }
-    #[inline] pub fn payload(&self) -> &'a [u8] { &self.buf[IGMP_MIN_LEN..] }
+    #[inline]
+    pub fn payload(&self) -> &'a [u8] {
+        &self.buf[IGMP_MIN_LEN..]
+    }
 
     pub fn verify_checksum(&self) -> bool {
         internet_checksum(self.buf) == 0
@@ -105,9 +120,7 @@ impl<'a> IgmpPacket<'a> {
                         sources: &payload[4..],
                     }
                 } else if grp == Ipv4Addr::UNSPECIFIED && max_resp == 0 {
-                    IgmpMessage::MembershipQueryV1 {
-                        group_address: grp,
-                    }
+                    IgmpMessage::MembershipQueryV1 { group_address: grp }
                 } else {
                     IgmpMessage::MembershipQueryV2 {
                         max_response: max_resp,
@@ -147,7 +160,9 @@ pub struct IgmpPacketBuilder {
 }
 
 impl Default for IgmpPacketBuilder {
-    fn default() -> Self { Self::new(TYPE_QUERY, 0) }
+    fn default() -> Self {
+        Self::new(TYPE_QUERY, 0)
+    }
 }
 
 impl IgmpPacketBuilder {
@@ -158,8 +173,12 @@ impl IgmpPacketBuilder {
         Self { buf, payload: None }
     }
 
-    pub fn query_v1() -> Self { Self::new(TYPE_QUERY, 0) }
-    pub fn query_v2(max_resp: u8) -> Self { Self::new(TYPE_QUERY, max_resp) }
+    pub fn query_v1() -> Self {
+        Self::new(TYPE_QUERY, 0)
+    }
+    pub fn query_v2(max_resp: u8) -> Self {
+        Self::new(TYPE_QUERY, max_resp)
+    }
     pub fn report_v2(addr: Ipv4Addr) -> Self {
         let mut s = Self::new(TYPE_REPORT_V2, 0);
         s.buf[4..8].copy_from_slice(&addr.octets());
@@ -232,7 +251,10 @@ mod tests {
         let pkt = IgmpPacket::new(&data).unwrap();
         assert_eq!(pkt.max_response(), 100);
         match pkt.message() {
-            IgmpMessage::MembershipQueryV2 { max_response, group_address } => {
+            IgmpMessage::MembershipQueryV2 {
+                max_response,
+                group_address,
+            } => {
                 assert_eq!(max_response, 100);
                 let _ = group_address;
             }

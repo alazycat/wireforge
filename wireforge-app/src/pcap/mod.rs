@@ -1,16 +1,16 @@
 //! pcap and pcapng file reader/writer.
 
-mod types;
-mod reader;
-mod writer;
 mod ng_reader;
 mod ng_writer;
+mod reader;
+mod types;
+mod writer;
 
-pub use types::{Endianness, LinkType, PcapHeader, PcapRecordHeader, PcapNgBlock};
-pub use reader::PcapReader;
-pub use writer::PcapWriter;
 pub use ng_reader::PcapNgReader;
 pub use ng_writer::PcapNgWriter;
+pub use reader::PcapReader;
+pub use types::{Endianness, LinkType, PcapHeader, PcapNgBlock, PcapRecordHeader};
+pub use writer::PcapWriter;
 
 /// Common interface for reading packet captures (pcap or pcapng).
 ///

@@ -8,7 +8,10 @@ use super::PacketCaptureReader;
 
 #[inline]
 fn read_u32(buf: &[u8], endian: Endianness) -> u32 {
-    match endian { Endianness::Big => u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]), Endianness::Little => u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) }
+    match endian {
+        Endianness::Big => u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
+        Endianness::Little => u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
+    }
 }
 
 pub struct PcapReader<R: Read> {
@@ -25,16 +28,27 @@ impl<R: Read> PcapReader<R> {
         let endian = match magic {
             0xa1b2c3d4 => Endianness::Big,
             0xd4c3b2a1 => Endianness::Little,
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("invalid magic: 0x{magic:08X}"))),
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("invalid magic: 0x{magic:08X}"),
+                ))
+            }
         };
         // Swap bytes if needed
         let read_u32 = |off: usize| -> u32 {
-            let b = &hdr_buf[off..off+4];
-            match endian { Endianness::Big => u32::from_be_bytes([b[0],b[1],b[2],b[3]]), Endianness::Little => u32::from_le_bytes([b[0],b[1],b[2],b[3]]) }
+            let b = &hdr_buf[off..off + 4];
+            match endian {
+                Endianness::Big => u32::from_be_bytes([b[0], b[1], b[2], b[3]]),
+                Endianness::Little => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
+            }
         };
         let read_u16 = |off: usize| -> u16 {
-            let b = &hdr_buf[off..off+2];
-            match endian { Endianness::Big => u16::from_be_bytes([b[0],b[1]]), Endianness::Little => u16::from_le_bytes([b[0],b[1]]) }
+            let b = &hdr_buf[off..off + 2];
+            match endian {
+                Endianness::Big => u16::from_be_bytes([b[0], b[1]]),
+                Endianness::Little => u16::from_le_bytes([b[0], b[1]]),
+            }
         };
         Ok(Self {
             reader,
@@ -51,8 +65,12 @@ impl<R: Read> PcapReader<R> {
         })
     }
 
-    pub fn header(&self) -> &PcapHeader { &self.header }
-    pub fn link_type(&self) -> LinkType { LinkType::from(self.header.network) }
+    pub fn header(&self) -> &PcapHeader {
+        &self.header
+    }
+    pub fn link_type(&self) -> LinkType {
+        LinkType::from(self.header.network)
+    }
 }
 
 impl<R: Read> Iterator for PcapReader<R> {
@@ -61,7 +79,7 @@ impl<R: Read> Iterator for PcapReader<R> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut rec_hdr = [0u8; 16];
         match self.reader.read_exact(&mut rec_hdr) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return None,
             Err(e) => return Some(Err(e)),
         }
@@ -80,7 +98,9 @@ impl<R: Read> Iterator for PcapReader<R> {
 impl<R: Read> PacketCaptureReader for PcapReader<R> {
     type Error = std::io::Error;
 
-    fn link_type(&self) -> Option<LinkType> { Some(self.link_type()) }
+    fn link_type(&self) -> Option<LinkType> {
+        Some(self.link_type())
+    }
 
     fn next_packet(&mut self) -> Option<Result<(std::time::Duration, Vec<u8>), Self::Error>> {
         self.next()

@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::types::EtherType;
-use crate::util::{seal_internet_checksum, read_u16be, read_u32be, write_u16be};
+use crate::util::{read_u16be, read_u32be, seal_internet_checksum, write_u16be};
 
 pub const GRE_MIN_LEN: usize = 4;
 
@@ -30,22 +30,41 @@ impl<'a> GrePacket<'a> {
 
     /// Raw bytes backing this packet.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     #[inline]
     pub fn flags(&self) -> u16 {
         read_u16be(&self.buf[..2])
     }
 
-    #[inline] pub fn checksum_present(&self) -> bool { self.flags() & FLAG_CHECKSUM != 0 }
-    #[inline] pub fn routing_present(&self) -> bool { self.flags() & FLAG_ROUTING != 0 }
-    #[inline] pub fn key_present(&self) -> bool { self.flags() & FLAG_KEY != 0 }
-    #[inline] pub fn sequence_present(&self) -> bool { self.flags() & FLAG_SEQUENCE != 0 }
-    #[inline] pub fn strict_source_route(&self) -> bool { self.flags() & FLAG_STRICT_ROUTE != 0 }
-    #[inline] pub fn recursion_control(&self) -> u8 {
+    #[inline]
+    pub fn checksum_present(&self) -> bool {
+        self.flags() & FLAG_CHECKSUM != 0
+    }
+    #[inline]
+    pub fn routing_present(&self) -> bool {
+        self.flags() & FLAG_ROUTING != 0
+    }
+    #[inline]
+    pub fn key_present(&self) -> bool {
+        self.flags() & FLAG_KEY != 0
+    }
+    #[inline]
+    pub fn sequence_present(&self) -> bool {
+        self.flags() & FLAG_SEQUENCE != 0
+    }
+    #[inline]
+    pub fn strict_source_route(&self) -> bool {
+        self.flags() & FLAG_STRICT_ROUTE != 0
+    }
+    #[inline]
+    pub fn recursion_control(&self) -> u8 {
         ((self.flags() & FLAG_RECURSION_MASK) >> FLAG_RECURSION_SHIFT) as u8
     }
-    #[inline] pub fn version(&self) -> u8 {
+    #[inline]
+    pub fn version(&self) -> u8 {
         (self.flags() & FLAG_VERSION_MASK) as u8
     }
 
@@ -56,13 +75,18 @@ impl<'a> GrePacket<'a> {
 
     fn option_offset(&self) -> usize {
         let mut off = GRE_MIN_LEN;
-        if self.checksum_present() { off += 4; }
-        if self.key_present() { off += 4; }
-        if self.sequence_present() { off += 4; }
-        if self.routing_present()
-            && off + 2 <= self.buf.len() {
-                let routing_len = read_u16be(&self.buf[off..off+2]) as usize;
-                off += routing_len;
+        if self.checksum_present() {
+            off += 4;
+        }
+        if self.key_present() {
+            off += 4;
+        }
+        if self.sequence_present() {
+            off += 4;
+        }
+        if self.routing_present() && off + 2 <= self.buf.len() {
+            let routing_len = read_u16be(&self.buf[off..off + 2]) as usize;
+            off += routing_len;
         }
         off
     }
@@ -70,42 +94,76 @@ impl<'a> GrePacket<'a> {
     pub fn checksum(&self) -> Option<u16> {
         if self.checksum_present() && self.buf.len() >= 8 {
             Some(read_u16be(&self.buf[4..6]))
-        } else { None }
+        } else {
+            None
+        }
     }
 
     pub fn key(&self) -> Option<u32> {
-        if !self.key_present() { return None; }
+        if !self.key_present() {
+            return None;
+        }
         let mut off = GRE_MIN_LEN;
-        if self.checksum_present() { off += 4; }
-        if off + 4 <= self.buf.len() { Some(read_u32be(&self.buf[off..off+4])) } else { None }
+        if self.checksum_present() {
+            off += 4;
+        }
+        if off + 4 <= self.buf.len() {
+            Some(read_u32be(&self.buf[off..off + 4]))
+        } else {
+            None
+        }
     }
 
     pub fn sequence(&self) -> Option<u32> {
-        if !self.sequence_present() { return None; }
+        if !self.sequence_present() {
+            return None;
+        }
         let mut off = GRE_MIN_LEN;
-        if self.checksum_present() { off += 4; }
-        if self.key_present() { off += 4; }
-        if off + 4 <= self.buf.len() { Some(read_u32be(&self.buf[off..off+4])) } else { None }
+        if self.checksum_present() {
+            off += 4;
+        }
+        if self.key_present() {
+            off += 4;
+        }
+        if off + 4 <= self.buf.len() {
+            Some(read_u32be(&self.buf[off..off + 4]))
+        } else {
+            None
+        }
     }
 
     pub fn routing(&self) -> Option<&[u8]> {
-        if !self.routing_present() { return None; }
+        if !self.routing_present() {
+            return None;
+        }
         let mut off = GRE_MIN_LEN;
-        if self.checksum_present() { off += 4; }
-        if self.key_present() { off += 4; }
-        if self.sequence_present() { off += 4; }
+        if self.checksum_present() {
+            off += 4;
+        }
+        if self.key_present() {
+            off += 4;
+        }
+        if self.sequence_present() {
+            off += 4;
+        }
         if off + 2 <= self.buf.len() {
-            let len = read_u16be(&self.buf[off..off+2]) as usize;
+            let len = read_u16be(&self.buf[off..off + 2]) as usize;
             let end = (off + len).min(self.buf.len());
             Some(&self.buf[off..end])
-        } else { None }
+        } else {
+            None
+        }
     }
 
     #[inline]
-    pub fn header_length(&self) -> usize { self.option_offset() }
+    pub fn header_length(&self) -> usize {
+        self.option_offset()
+    }
 
     #[inline]
-    pub fn payload(&self) -> &'a [u8] { &self.buf[self.option_offset()..] }
+    pub fn payload(&self) -> &'a [u8] {
+        &self.buf[self.option_offset()..]
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -128,33 +186,47 @@ impl GrePacketBuilder {
         let pt: u16 = protocol_type.into();
         write_u16be(&mut buf[2..4], pt);
         Self {
-            buf, has_checksum: false, has_key: false, has_seq: false,
-            key_val: 0, seq_val: 0, payload: None,
+            buf,
+            has_checksum: false,
+            has_key: false,
+            has_seq: false,
+            key_val: 0,
+            seq_val: 0,
+            payload: None,
         }
     }
 
     pub fn key(mut self, key: u32) -> Self {
-        self.has_key = true; self.key_val = key; self
+        self.has_key = true;
+        self.key_val = key;
+        self
     }
 
     pub fn sequence(mut self, seq: u32) -> Self {
-        self.has_seq = true; self.seq_val = seq; self
+        self.has_seq = true;
+        self.seq_val = seq;
+        self
     }
 
     pub fn checksum(mut self) -> Self {
-        self.has_checksum = true; self
+        self.has_checksum = true;
+        self
     }
 
     pub fn recursion_control(mut self, v: u8) -> Self {
         let flags = read_u16be(&self.buf[..2]);
-        let updated = (flags & !FLAG_RECURSION_MASK) | (((v as u16) << FLAG_RECURSION_SHIFT) & FLAG_RECURSION_MASK);
+        let updated = (flags & !FLAG_RECURSION_MASK)
+            | (((v as u16) << FLAG_RECURSION_SHIFT) & FLAG_RECURSION_MASK);
         write_u16be(&mut self.buf[..2], updated);
         self
     }
 
     pub fn version(mut self, v: u8) -> Self {
         let flags = read_u16be(&self.buf[..2]);
-        write_u16be(&mut self.buf[..2], (flags & !FLAG_VERSION_MASK) | (v as u16 & FLAG_VERSION_MASK));
+        write_u16be(
+            &mut self.buf[..2],
+            (flags & !FLAG_VERSION_MASK) | (v as u16 & FLAG_VERSION_MASK),
+        );
         self
     }
 
@@ -165,25 +237,45 @@ impl GrePacketBuilder {
 
     pub fn build(mut self) -> Vec<u8> {
         let mut flags = read_u16be(&self.buf[..2]);
-        if self.has_checksum { flags |= FLAG_CHECKSUM; }
-        if self.has_key { flags |= FLAG_KEY; }
+        if self.has_checksum {
+            flags |= FLAG_CHECKSUM;
+        }
+        if self.has_key {
+            flags |= FLAG_KEY;
+        }
         if self.has_seq {
             flags |= FLAG_SEQUENCE;
-            if !self.has_key { self.has_key = true; self.key_val = 0; flags |= FLAG_KEY; }
+            if !self.has_key {
+                self.has_key = true;
+                self.key_val = 0;
+                flags |= FLAG_KEY;
+            }
         }
         write_u16be(&mut self.buf[..2], flags);
 
         let mut extras = Vec::new();
         // Checksum slot (0 for now)
-        let csum_pos = if self.has_checksum { let p = extras.len() + GRE_MIN_LEN; extras.extend_from_slice(&[0u8; 4]); Some(p) } else { None };
+        let csum_pos = if self.has_checksum {
+            let p = extras.len() + GRE_MIN_LEN;
+            extras.extend_from_slice(&[0u8; 4]);
+            Some(p)
+        } else {
+            None
+        };
         // Key
-        if self.has_key { extras.extend_from_slice(&self.key_val.to_be_bytes()); }
+        if self.has_key {
+            extras.extend_from_slice(&self.key_val.to_be_bytes());
+        }
         // Sequence
-        if self.has_seq { extras.extend_from_slice(&self.seq_val.to_be_bytes()); }
+        if self.has_seq {
+            extras.extend_from_slice(&self.seq_val.to_be_bytes());
+        }
 
         let mut pkt = self.buf;
         pkt.extend_from_slice(&extras);
-        if let Some(ref p) = self.payload { pkt.extend_from_slice(p); }
+        if let Some(ref p) = self.payload {
+            pkt.extend_from_slice(p);
+        }
 
         // Compute GRE checksum (RFC 2784: over GRE header + payload)
         if let Some(pos) = csum_pos {
@@ -292,7 +384,10 @@ mod tests {
         let with_key = GrePacketBuilder::new(EtherType::Ipv4).key(1).build();
         assert_eq!(GrePacket::new(&with_key).unwrap().header_length(), 8);
 
-        let with_key_seq = GrePacketBuilder::new(EtherType::Ipv4).key(1).sequence(1).build();
+        let with_key_seq = GrePacketBuilder::new(EtherType::Ipv4)
+            .key(1)
+            .sequence(1)
+            .build();
         assert_eq!(GrePacket::new(&with_key_seq).unwrap().header_length(), 12);
     }
 }

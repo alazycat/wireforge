@@ -17,21 +17,35 @@ impl<'a> MdnsPacket<'a> {
         DnsPacket::new(buf).map(|dns| Self { dns })
     }
 
-    pub fn is_query(&self) -> bool { !self.dns.qr() }
-    pub fn is_response(&self) -> bool { self.dns.qr() }
+    pub fn is_query(&self) -> bool {
+        !self.dns.qr()
+    }
+    pub fn is_response(&self) -> bool {
+        self.dns.qr()
+    }
 
     /// The unicast-response (QU) bit in the first question's class field.
     /// When set, responders should send a unicast reply (RFC 6762 §5.4).
     pub fn unicast_response_requested(&self) -> bool {
-        self.dns.questions().next()
+        self.dns
+            .questions()
+            .next()
             .map(|q| u16::from(q.qclass) & 0x8000 != 0)
             .unwrap_or(false)
     }
 
-    pub fn questions(&self) -> DnsQuestionIter<'a> { self.dns.questions() }
-    pub fn answers(&self) -> DnsRecordIter<'a> { self.dns.answers() }
-    pub fn authorities(&self) -> DnsRecordIter<'a> { self.dns.authorities() }
-    pub fn additionals(&self) -> DnsRecordIter<'a> { self.dns.additionals() }
+    pub fn questions(&self) -> DnsQuestionIter<'a> {
+        self.dns.questions()
+    }
+    pub fn answers(&self) -> DnsRecordIter<'a> {
+        self.dns.answers()
+    }
+    pub fn authorities(&self) -> DnsRecordIter<'a> {
+        self.dns.authorities()
+    }
+    pub fn additionals(&self) -> DnsRecordIter<'a> {
+        self.dns.additionals()
+    }
 }
 
 /// Check whether the cache-flush bit is set in a record class field

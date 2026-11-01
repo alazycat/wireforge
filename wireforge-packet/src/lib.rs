@@ -10,8 +10,8 @@ use wireforge_core::icmp::{IcmpPacket, Icmpv6Packet};
 use wireforge_core::ipv4::Ipv4Packet;
 use wireforge_core::ipv6::Ipv6Packet;
 use wireforge_core::tcp::TcpPacket;
-use wireforge_core::udp::UdpPacket;
 use wireforge_core::types::{EtherType, IpProtocol};
+use wireforge_core::udp::UdpPacket;
 
 /// Unified packet enum covering all supported L2–L4 protocols.
 #[non_exhaustive]
@@ -147,8 +147,11 @@ impl<'a> Packet<'a> {
             Packet::Ipv4(ip) => parse_ipv4_payload(ip),
             Packet::Ipv6(ip) => parse_ipv6_payload(ip),
             // Leaf protocols — no further nesting
-            Packet::Arp(_) | Packet::Tcp(_) | Packet::Udp(_)
-            | Packet::Icmp(_) | Packet::Icmpv6(_) => None,
+            Packet::Arp(_)
+            | Packet::Tcp(_)
+            | Packet::Udp(_)
+            | Packet::Icmp(_)
+            | Packet::Icmpv6(_) => None,
         }
     }
 
@@ -178,11 +181,15 @@ pub struct ProtocolStackVisitor {
 }
 
 impl ProtocolStackVisitor {
-    pub fn new() -> Self { Self { stack: Vec::new() } }
+    pub fn new() -> Self {
+        Self { stack: Vec::new() }
+    }
 }
 
 impl Default for ProtocolStackVisitor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PacketVisitor for ProtocolStackVisitor {
@@ -220,11 +227,15 @@ pub struct PacketSizeVisitor {
 }
 
 impl PacketSizeVisitor {
-    pub fn new() -> Self { Self { size: 0 } }
+    pub fn new() -> Self {
+        Self { size: 0 }
+    }
 }
 
 impl Default for PacketSizeVisitor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PacketVisitor for PacketSizeVisitor {
@@ -301,8 +312,8 @@ mod tests {
         // Build a valid ARP request (28 bytes minimum)
         let mut arp_bytes = vec![0x00u8, 0x01]; // hw_type=Ethernet
         arp_bytes.extend_from_slice(&[0x08, 0x00]); // proto_type=IPv4
-        arp_bytes.push(6);  // hw_addr_len
-        arp_bytes.push(4);  // proto_addr_len
+        arp_bytes.push(6); // hw_addr_len
+        arp_bytes.push(4); // proto_addr_len
         arp_bytes.extend_from_slice(&[0x00, 0x01]); // operation=Request
         arp_bytes.extend_from_slice(&[0x00u8; 20]); // addresses (6+4+6+4)
 
@@ -335,14 +346,18 @@ mod tests {
             .source_port(12345)
             .destination_port(53)
             .payload(&[0x01])
-            .build(std::net::Ipv4Addr::new(10, 0, 0, 1), std::net::Ipv4Addr::new(10, 0, 0, 2));
+            .build(
+                std::net::Ipv4Addr::new(10, 0, 0, 1),
+                std::net::Ipv4Addr::new(10, 0, 0, 2),
+            );
 
         let ip_bytes = Ipv4PacketBuilder::new()
             .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
             .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
             .protocol(IpProtocol::Udp)
             .ttl(64)
-            .payload(&udp_bytes).unwrap()
+            .payload(&udp_bytes)
+            .unwrap()
             .build();
 
         let ip = Ipv4Packet::new(&ip_bytes).unwrap();
@@ -354,7 +369,8 @@ mod tests {
     fn dispatch_ipv4_to_icmp() {
         use wireforge_core::icmp::IcmpPacketBuilder;
         let icmp_bytes = IcmpPacketBuilder::echo_request()
-            .identifier(1).sequence_number(1)
+            .identifier(1)
+            .sequence_number(1)
             .payload(b"ping")
             .build();
 
@@ -363,7 +379,8 @@ mod tests {
             .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
             .protocol(IpProtocol::Icmp)
             .ttl(64)
-            .payload(&icmp_bytes).unwrap()
+            .payload(&icmp_bytes)
+            .unwrap()
             .build();
 
         let ip = Ipv4Packet::new(&ip_bytes).unwrap();
@@ -378,10 +395,14 @@ mod tests {
         use wireforge_core::arp::ArpPacketBuilder;
 
         let bytes = ArpPacketBuilder::new()
-            .sender_hw_addr(&[0xAA; 6]).unwrap()
-            .sender_proto_addr(&[10, 0, 0, 1]).unwrap()
-            .target_hw_addr(&[0xBB; 6]).unwrap()
-            .target_proto_addr(&[10, 0, 0, 2]).unwrap()
+            .sender_hw_addr(&[0xAA; 6])
+            .unwrap()
+            .sender_proto_addr(&[10, 0, 0, 1])
+            .unwrap()
+            .target_hw_addr(&[0xBB; 6])
+            .unwrap()
+            .target_proto_addr(&[10, 0, 0, 2])
+            .unwrap()
             .build();
 
         let pkt = Packet::Arp(ArpPacket::new(&bytes).unwrap());
@@ -450,7 +471,8 @@ mod tests {
             .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
             .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
             .protocol(IpProtocol::Tcp)
-            .payload(&tcp_bytes).unwrap()
+            .payload(&tcp_bytes)
+            .unwrap()
             .build();
 
         let mut frame = vec![0xFFu8; 12]; // dst + src mac
@@ -489,7 +511,8 @@ mod tests {
             .source(std::net::Ipv4Addr::new(10, 0, 0, 1))
             .destination(std::net::Ipv4Addr::new(10, 0, 0, 2))
             .protocol(IpProtocol::Tcp)
-            .payload(&tcp_bytes).unwrap()
+            .payload(&tcp_bytes)
+            .unwrap()
             .build();
 
         let mut frame = vec![0xFFu8; 12];
@@ -508,10 +531,14 @@ mod tests {
         use wireforge_core::arp::ArpPacketBuilder;
 
         let bytes = ArpPacketBuilder::new()
-            .sender_hw_addr(&[0xAA; 6]).unwrap()
-            .sender_proto_addr(&[10, 0, 0, 1]).unwrap()
-            .target_hw_addr(&[0xBB; 6]).unwrap()
-            .target_proto_addr(&[10, 0, 0, 2]).unwrap()
+            .sender_hw_addr(&[0xAA; 6])
+            .unwrap()
+            .sender_proto_addr(&[10, 0, 0, 1])
+            .unwrap()
+            .target_hw_addr(&[0xBB; 6])
+            .unwrap()
+            .target_proto_addr(&[10, 0, 0, 2])
+            .unwrap()
             .build();
 
         let pkt = Packet::Arp(ArpPacket::new(&bytes).unwrap());

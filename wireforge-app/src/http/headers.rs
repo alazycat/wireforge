@@ -13,7 +13,9 @@ pub struct HeaderIter<'a> {
 }
 
 impl<'a> HeaderIter<'a> {
-    pub fn new(data: &'a [u8]) -> Self { Self { data } }
+    pub fn new(data: &'a [u8]) -> Self {
+        Self { data }
+    }
 }
 
 impl<'a> Iterator for HeaderIter<'a> {
@@ -30,7 +32,11 @@ impl<'a> Iterator for HeaderIter<'a> {
         let colon = line.iter().position(|&b| b == b':')?;
         let name = core::str::from_utf8(&line[..colon]).ok()?.trim_end();
         let value = &line[colon + 1..];
-        let value = if value.first() == Some(&b' ') { &value[1..] } else { value };
+        let value = if value.first() == Some(&b' ') {
+            &value[1..]
+        } else {
+            value
+        };
 
         Some(Header { name, value })
     }

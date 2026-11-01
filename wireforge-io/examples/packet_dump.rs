@@ -8,7 +8,7 @@
 
 #[cfg(target_os = "linux")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use wireforge_io::{L2Receiver, IoError};
+    use wireforge_io::{IoError, L2Receiver};
 
     let ifname = std::env::args().nth(1).unwrap_or_else(|| "lo".into());
     let mut rx = L2Receiver::new(&ifname)?;

@@ -36,7 +36,10 @@ impl core::fmt::Display for IoError {
                 write!(f, "unsupported pcap version: {major}.{minor}")
             }
             Self::TruncatedRecord { expected, got } => {
-                write!(f, "truncated pcap record: expected {expected} bytes, got {got}")
+                write!(
+                    f,
+                    "truncated pcap record: expected {expected} bytes, got {got}"
+                )
             }
             Self::InterfaceNotFound(name) => write!(f, "interface not found: {name}"),
             Self::PermissionDenied => write!(f, "permission denied (root/Administrator required)"),

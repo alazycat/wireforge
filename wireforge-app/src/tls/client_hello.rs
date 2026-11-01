@@ -5,20 +5,32 @@ use super::handshake::TlsHandshake;
 use super::record::TlsRecord;
 
 #[derive(Debug, Clone)]
-pub struct TlsClientHello<'a> { buf: &'a [u8], client_hello_start: usize }
+pub struct TlsClientHello<'a> {
+    buf: &'a [u8],
+    client_hello_start: usize,
+}
 
 impl<'a> TlsClientHello<'a> {
     /// Parse a TLS ClientHello from raw bytes (Record → Handshake → ClientHello).
     pub fn parse(buf: &'a [u8]) -> Option<Self> {
         let record = TlsRecord::parse(buf)?;
         let handshake = TlsHandshake::parse(record.fragment())?;
-        if handshake.handshake_type() != 1 { return None; } // not client_hello
+        if handshake.handshake_type() != 1 {
+            return None;
+        } // not client_hello
         let body = handshake.body();
-        if body.len() < 38 { return None; } // minimum: version(2)+random(32)+session_id_len(1)+cipher_suites_len(2)+comp_len(1)
-        Some(Self { buf, client_hello_start: body.as_ptr() as usize - buf.as_ptr() as usize })
+        if body.len() < 38 {
+            return None;
+        } // minimum: version(2)+random(32)+session_id_len(1)+cipher_suites_len(2)+comp_len(1)
+        Some(Self {
+            buf,
+            client_hello_start: body.as_ptr() as usize - buf.as_ptr() as usize,
+        })
     }
 
-    fn body(&self) -> &'a [u8] { &self.buf[self.client_hello_start..] }
+    fn body(&self) -> &'a [u8] {
+        &self.buf[self.client_hello_start..]
+    }
 
     pub fn client_version(&self) -> u16 {
         let b = self.body();
@@ -39,9 +51,11 @@ impl<'a> TlsClientHello<'a> {
     pub fn cipher_suites(&self) -> &[u16] {
         let b = self.body();
         let pos = 35 + b[34] as usize; // skip session_id
-        if pos + 2 > b.len() { return &[]; }
-        let len = u16::from_be_bytes([b[pos], b[pos+1]]) as usize;
-        let data = &b[pos+2..];
+        if pos + 2 > b.len() {
+            return &[];
+        }
+        let len = u16::from_be_bytes([b[pos], b[pos + 1]]) as usize;
+        let data = &b[pos + 2..];
         let count = (len / 2).min(data.len() / 2);
         // SAFETY: transmuting &[u8] to &[u16] — data is aligned for u16 reads
         unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u16, count) }
@@ -50,29 +64,39 @@ impl<'a> TlsClientHello<'a> {
     pub fn compression_methods(&self) -> &[u8] {
         let b = self.body();
         let mut pos = 35 + b[34] as usize;
-        if pos + 2 > b.len() { return &[]; }
-        let cs_len = u16::from_be_bytes([b[pos], b[pos+1]]) as usize;
+        if pos + 2 > b.len() {
+            return &[];
+        }
+        let cs_len = u16::from_be_bytes([b[pos], b[pos + 1]]) as usize;
         pos += 2 + cs_len;
-        if pos + 1 > b.len() { return &[]; }
+        if pos + 1 > b.len() {
+            return &[];
+        }
         let cm_len = b[pos] as usize;
         let end = (pos + 1 + cm_len).min(b.len());
-        &b[pos+1..end]
+        &b[pos + 1..end]
     }
 
     /// Iterate over TLS extensions.
     pub fn extensions(&self) -> TlsExtensionsIter<'a> {
         let b = self.body();
         let mut pos = 35 + b[34] as usize;
-        if pos + 2 > b.len() { return TlsExtensionsIter::new(&[]); }
-        let cs_len = u16::from_be_bytes([b[pos], b[pos+1]]) as usize;
+        if pos + 2 > b.len() {
+            return TlsExtensionsIter::new(&[]);
+        }
+        let cs_len = u16::from_be_bytes([b[pos], b[pos + 1]]) as usize;
         pos += 2 + cs_len;
-        if pos + 1 > b.len() { return TlsExtensionsIter::new(&[]); }
+        if pos + 1 > b.len() {
+            return TlsExtensionsIter::new(&[]);
+        }
         let cm_len = b[pos] as usize;
         pos += 1 + cm_len;
-        if pos + 2 > b.len() { return TlsExtensionsIter::new(&[]); }
-        let ext_len = u16::from_be_bytes([b[pos], b[pos+1]]) as usize;
+        if pos + 2 > b.len() {
+            return TlsExtensionsIter::new(&[]);
+        }
+        let ext_len = u16::from_be_bytes([b[pos], b[pos + 1]]) as usize;
         let end = (pos + 2 + ext_len).min(b.len());
-        TlsExtensionsIter::new(&b[pos+2..end])
+        TlsExtensionsIter::new(&b[pos + 2..end])
     }
 
     /// Extract SNI server name from extension type 0x0000.
@@ -83,7 +107,8 @@ impl<'a> TlsClientHello<'a> {
                 let list_len = u16::from_be_bytes([ext.data[0], ext.data[1]]) as usize;
                 if list_len + 2 <= ext.data.len() {
                     let entry = &ext.data[2..2 + list_len];
-                    if entry.len() >= 3 && entry[0] == 0 { // name_type=hostname
+                    if entry.len() >= 3 && entry[0] == 0 {
+                        // name_type=hostname
                         let name_len = u16::from_be_bytes([entry[1], entry[2]]) as usize;
                         if 3 + name_len <= entry.len() {
                             return std::str::from_utf8(&entry[3..3 + name_len]).ok();
@@ -101,7 +126,7 @@ impl<'a> TlsClientHello<'a> {
             if ext.extension_type == 0x002b && !ext.data.is_empty() {
                 let len = ext.data[0] as usize;
                 if len < ext.data.len() {
-                    let versions: Vec<u16> = ext.data[1..1+len]
+                    let versions: Vec<u16> = ext.data[1..1 + len]
                         .chunks_exact(2)
                         .map(|c| u16::from_be_bytes([c[0], c[1]]))
                         .collect();
@@ -121,7 +146,7 @@ mod tests {
     fn tls12_sample() -> Vec<u8> {
         let ch = [
             0x03u8, 0x03, // version TLS 1.2
-            // random (32 bytes of 0xAA)
+                 // random (32 bytes of 0xAA)
         ];
         let mut data = vec![0x16, 0x03, 0x03, 0x00, 0x00]; // record with placeholder length
         let mut ch_body = Vec::new();
@@ -131,8 +156,9 @@ mod tests {
         ch_body.extend_from_slice(&[0x00u8, 0x04]); // cipher_suites_len = 4 (2 suites)
         ch_body.extend_from_slice(&0xC02Bu16.to_be_bytes()); // TLS_ECDHE_RSA_AES_128_GCM
         ch_body.extend_from_slice(&0x009Cu16.to_be_bytes()); // TLS_RSA_AES_128_GCM
-        ch_body.push(1); ch_body.push(0); // compression_methods: null
-        // SNI extension
+        ch_body.push(1);
+        ch_body.push(0); // compression_methods: null
+                         // SNI extension
         let sn = b"example.com";
         // SNI extension: type=0x0000, len, server_name_list_len, name_type=0, name_len, name
         let sn_len = sn.len();
@@ -178,9 +204,9 @@ mod tests {
             0x01, 0x00, 0x00, 0x40, // handshake: client_hello, len=64
             0x03, 0x03, // client_version = TLS 1.2 (legacy)
             // random (32 bytes)
-            0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,
-            0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,
-            0x00, // session_id_len=0
+            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+            0xAA, 0xAA, 0xAA, 0xAA, 0x00, // session_id_len=0
             0x00, 0x02, 0x13, 0x01, // cipher_suites: 1 suite (TLS_AES_128_GCM)
             0x01, 0x00, // compression: null
             0x00, 0x07, // extensions length = 7

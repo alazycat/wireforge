@@ -19,13 +19,7 @@ const IPPROTO_IP: i32 = 0;
 const IP_HDRINCL: i32 = 2;
 
 extern "system" {
-    fn setsockopt(
-        s: usize,
-        level: i32,
-        optname: i32,
-        optval: *const u8,
-        optlen: i32,
-    ) -> i32;
+    fn setsockopt(s: usize, level: i32, optname: i32, optval: *const u8, optlen: i32) -> i32;
 }
 
 /// Windows raw socket L3 receiver.
@@ -92,9 +86,15 @@ impl WinL3Receiver {
 
 // Trait impl delegates to inherent methods
 impl L3Reader for WinL3Receiver {
-    fn recv(&mut self) -> Result<Ipv4Packet<'_>, IoError> { self.recv() }
-    fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError> { self.set_timeout(dur) }
-    fn set_header_included(&mut self, on: bool) -> Result<(), IoError> { self.set_header_included(on) }
+    fn recv(&mut self) -> Result<Ipv4Packet<'_>, IoError> {
+        self.recv()
+    }
+    fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError> {
+        self.set_timeout(dur)
+    }
+    fn set_header_included(&mut self, on: bool) -> Result<(), IoError> {
+        self.set_header_included(on)
+    }
 }
 
 /// Windows raw socket L3 sender.
@@ -117,5 +117,7 @@ impl WinL3Sender {
 }
 
 impl L3Writer for WinL3Sender {
-    fn send_to(&self, packet: &[u8], dst: SocketAddrV4) -> Result<usize, IoError> { self.send_to(packet, dst) }
+    fn send_to(&self, packet: &[u8], dst: SocketAddrV4) -> Result<usize, IoError> {
+        self.send_to(packet, dst)
+    }
 }

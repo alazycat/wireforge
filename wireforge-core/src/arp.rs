@@ -20,7 +20,9 @@ impl<'a> ArpPacket<'a> {
 
     /// Raw bytes backing this packet.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     #[inline]
     pub fn hardware_type(&self) -> ArpHardwareType {
@@ -116,7 +118,7 @@ impl ArpPacketBuilder {
     /// Create a new builder with Ethernet/IPv4 defaults.
     pub fn new() -> Self {
         Self {
-            hw_type: 1, // Ethernet
+            hw_type: 1,         // Ethernet
             proto_type: 0x0800, // IPv4
             hw_addr_len: 6,
             proto_addr_len: 4,
@@ -188,8 +190,11 @@ impl ArpPacketBuilder {
     }
 
     pub fn build(self) -> Vec<u8> {
-        let total = 8 + self.sender_hw.len() + self.sender_proto.len()
-            + self.target_hw.len() + self.target_proto.len();
+        let total = 8
+            + self.sender_hw.len()
+            + self.sender_proto.len()
+            + self.target_hw.len()
+            + self.target_proto.len();
         let mut buf = Vec::with_capacity(total);
 
         buf.extend_from_slice(&self.hw_type.to_be_bytes());

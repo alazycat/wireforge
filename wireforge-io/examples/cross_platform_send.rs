@@ -15,7 +15,7 @@ use wireforge_core::ether::EthernetPacketBuilder;
 use wireforge_core::icmp::IcmpPacketBuilder;
 use wireforge_core::ipv4::Ipv4PacketBuilder;
 use wireforge_core::types::{EtherType, IpProtocol};
-use wireforge_io::{DefaultL2Writer, traits::L2Writer};
+use wireforge_io::{traits::L2Writer, DefaultL2Writer};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ifname = std::env::args().nth(1).unwrap_or_else(|| "eth0".into());

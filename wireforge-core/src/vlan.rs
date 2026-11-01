@@ -24,7 +24,9 @@ impl<'a> VlanPacket<'a> {
 
     /// Raw bytes backing this tag.
     #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] { self.buf }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.buf
+    }
 
     /// Priority Code Point (3 bits).
     #[inline]

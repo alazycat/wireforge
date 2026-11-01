@@ -47,26 +47,69 @@ impl<'a> DnsPacket<'a> {
 
         Some(Self {
             buf,
-            answers_start, authorities_start, additionals_start,
-            questions_count: qc as u16, answers_count: ac as u16,
-            authorities_count: nc as u16, additionals_count: dc as u16,
+            answers_start,
+            authorities_start,
+            additionals_start,
+            questions_count: qc as u16,
+            answers_count: ac as u16,
+            authorities_count: nc as u16,
+            additionals_count: dc as u16,
         })
     }
 
-    #[inline] pub fn transaction_id(&self) -> u16 { read_u16be(&self.buf[..2]) }
-    #[inline] pub fn flags(&self) -> u16 { read_u16be(&self.buf[2..4]) }
-    #[inline] pub fn qr(&self) -> bool { self.flags() & 0x8000 != 0 }
-    #[inline] pub fn opcode(&self) -> DnsOpcode { DnsOpcode::from(((self.flags() >> 11) & 0x0F) as u8) }
-    #[inline] pub fn aa(&self) -> bool { self.flags() & 0x0400 != 0 }
-    #[inline] pub fn tc(&self) -> bool { self.flags() & 0x0200 != 0 }
-    #[inline] pub fn rd(&self) -> bool { self.flags() & 0x0100 != 0 }
-    #[inline] pub fn ra(&self) -> bool { self.flags() & 0x0080 != 0 }
-    #[inline] pub fn rcode(&self) -> DnsRcode { DnsRcode::from((self.flags() & 0x000F) as u8) }
+    #[inline]
+    pub fn transaction_id(&self) -> u16 {
+        read_u16be(&self.buf[..2])
+    }
+    #[inline]
+    pub fn flags(&self) -> u16 {
+        read_u16be(&self.buf[2..4])
+    }
+    #[inline]
+    pub fn qr(&self) -> bool {
+        self.flags() & 0x8000 != 0
+    }
+    #[inline]
+    pub fn opcode(&self) -> DnsOpcode {
+        DnsOpcode::from(((self.flags() >> 11) & 0x0F) as u8)
+    }
+    #[inline]
+    pub fn aa(&self) -> bool {
+        self.flags() & 0x0400 != 0
+    }
+    #[inline]
+    pub fn tc(&self) -> bool {
+        self.flags() & 0x0200 != 0
+    }
+    #[inline]
+    pub fn rd(&self) -> bool {
+        self.flags() & 0x0100 != 0
+    }
+    #[inline]
+    pub fn ra(&self) -> bool {
+        self.flags() & 0x0080 != 0
+    }
+    #[inline]
+    pub fn rcode(&self) -> DnsRcode {
+        DnsRcode::from((self.flags() & 0x000F) as u8)
+    }
 
-    #[inline] pub fn questions_count(&self) -> u16 { self.questions_count }
-    #[inline] pub fn answers_count(&self) -> u16 { self.answers_count }
-    #[inline] pub fn authorities_count(&self) -> u16 { self.authorities_count }
-    #[inline] pub fn additionals_count(&self) -> u16 { self.additionals_count }
+    #[inline]
+    pub fn questions_count(&self) -> u16 {
+        self.questions_count
+    }
+    #[inline]
+    pub fn answers_count(&self) -> u16 {
+        self.answers_count
+    }
+    #[inline]
+    pub fn authorities_count(&self) -> u16 {
+        self.authorities_count
+    }
+    #[inline]
+    pub fn additionals_count(&self) -> u16 {
+        self.additionals_count
+    }
 
     /// Iterate over the Question section.
     pub fn questions(&self) -> DnsQuestionIter<'a> {
@@ -79,17 +122,29 @@ impl<'a> DnsPacket<'a> {
 
     /// Iterate over the Answer section.
     pub fn answers(&self) -> DnsRecordIter<'a> {
-        DnsRecordIter { buf: self.buf, pos: self.answers_start, remaining: self.answers_count as usize }
+        DnsRecordIter {
+            buf: self.buf,
+            pos: self.answers_start,
+            remaining: self.answers_count as usize,
+        }
     }
 
     /// Iterate over the Authority section.
     pub fn authorities(&self) -> DnsRecordIter<'a> {
-        DnsRecordIter { buf: self.buf, pos: self.authorities_start, remaining: self.authorities_count as usize }
+        DnsRecordIter {
+            buf: self.buf,
+            pos: self.authorities_start,
+            remaining: self.authorities_count as usize,
+        }
     }
 
     /// Iterate over the Additional section.
     pub fn additionals(&self) -> DnsRecordIter<'a> {
-        DnsRecordIter { buf: self.buf, pos: self.additionals_start, remaining: self.additionals_count as usize }
+        DnsRecordIter {
+            buf: self.buf,
+            pos: self.additionals_start,
+            remaining: self.additionals_count as usize,
+        }
     }
 }
 
@@ -147,7 +202,11 @@ impl<'a> Iterator for DnsQuestionIter<'a> {
         let qclass = DnsClass::from(read_u16be(&self.buf[next + 2..next + 4]));
         self.pos = next + 4;
         self.remaining -= 1;
-        Some(DnsQuestion { name, qtype, qclass })
+        Some(DnsQuestion {
+            name,
+            qtype,
+            qclass,
+        })
     }
 }
 
@@ -255,61 +314,133 @@ impl<'a> Iterator for DnsRecordIter<'a> {
                     let addr = Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3]);
                     DnsRecord::A { name, ttl, addr }
                 } else {
-                    DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() }
+                    DnsRecord::Unknown {
+                        name,
+                        qtype,
+                        ttl,
+                        rdata: rdata.to_vec(),
+                    }
                 }
             }
             DnsType::AAAA => {
                 let b: Option<[u8; 16]> = rdata.get(..16).and_then(|s| s.try_into().ok());
                 if let Some(b) = b {
-                    DnsRecord::AAAA { name, ttl, addr: Ipv6Addr::from(b) }
+                    DnsRecord::AAAA {
+                        name,
+                        ttl,
+                        addr: Ipv6Addr::from(b),
+                    }
                 } else {
-                    DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() }
+                    DnsRecord::Unknown {
+                        name,
+                        qtype,
+                        ttl,
+                        rdata: rdata.to_vec(),
+                    }
                 }
             }
-            DnsType::CNAME => {
-                parse_name(self.buf, rdata_start)
-                    .map(|(cn, _)| DnsRecord::CNAME { name: name.clone(), ttl, cname: cn })
-                    .unwrap_or(DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() })
-            }
+            DnsType::CNAME => parse_name(self.buf, rdata_start)
+                .map(|(cn, _)| DnsRecord::CNAME {
+                    name: name.clone(),
+                    ttl,
+                    cname: cn,
+                })
+                .unwrap_or(DnsRecord::Unknown {
+                    name,
+                    qtype,
+                    ttl,
+                    rdata: rdata.to_vec(),
+                }),
             DnsType::MX => {
                 if rdata.len() >= 3 {
                     let preference = read_u16be(&rdata[..2]);
                     parse_name(self.buf, rdata_start + 2)
-                        .map(|(ex, _)| DnsRecord::MX { name: name.clone(), ttl, preference, exchange: ex })
-                        .unwrap_or(DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() })
+                        .map(|(ex, _)| DnsRecord::MX {
+                            name: name.clone(),
+                            ttl,
+                            preference,
+                            exchange: ex,
+                        })
+                        .unwrap_or(DnsRecord::Unknown {
+                            name,
+                            qtype,
+                            ttl,
+                            rdata: rdata.to_vec(),
+                        })
                 } else {
-                    DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() }
+                    DnsRecord::Unknown {
+                        name,
+                        qtype,
+                        ttl,
+                        rdata: rdata.to_vec(),
+                    }
                 }
             }
-            DnsType::NS => {
-                parse_name(self.buf, rdata_start)
-                    .map(|(ns, _)| DnsRecord::NS { name: name.clone(), ttl, nsdname: ns })
-                    .unwrap_or(DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() })
-            }
-            DnsType::PTR => {
-                parse_name(self.buf, rdata_start)
-                    .map(|(pt, _)| DnsRecord::PTR { name: name.clone(), ttl, ptrdname: pt })
-                    .unwrap_or(DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() })
-            }
+            DnsType::NS => parse_name(self.buf, rdata_start)
+                .map(|(ns, _)| DnsRecord::NS {
+                    name: name.clone(),
+                    ttl,
+                    nsdname: ns,
+                })
+                .unwrap_or(DnsRecord::Unknown {
+                    name,
+                    qtype,
+                    ttl,
+                    rdata: rdata.to_vec(),
+                }),
+            DnsType::PTR => parse_name(self.buf, rdata_start)
+                .map(|(pt, _)| DnsRecord::PTR {
+                    name: name.clone(),
+                    ttl,
+                    ptrdname: pt,
+                })
+                .unwrap_or(DnsRecord::Unknown {
+                    name,
+                    qtype,
+                    ttl,
+                    rdata: rdata.to_vec(),
+                }),
             DnsType::SOA => parse_soa_rdata(self.buf, rdata_start, rdlen, name, ttl, qtype),
-            DnsType::TXT => {
-                DnsRecord::TXT { name, ttl, data: rdata.to_vec() }
-            }
+            DnsType::TXT => DnsRecord::TXT {
+                name,
+                ttl,
+                data: rdata.to_vec(),
+            },
             DnsType::SRV => {
                 if rdata.len() >= 6 {
                     let priority = read_u16be(&rdata[..2]);
                     let weight = read_u16be(&rdata[2..4]);
                     let port = read_u16be(&rdata[4..6]);
                     parse_name(self.buf, rdata_start + 6)
-                        .map(|(tgt, _)| DnsRecord::SRV { name: name.clone(), ttl, priority, weight, port, target: tgt })
-                        .unwrap_or(DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() })
+                        .map(|(tgt, _)| DnsRecord::SRV {
+                            name: name.clone(),
+                            ttl,
+                            priority,
+                            weight,
+                            port,
+                            target: tgt,
+                        })
+                        .unwrap_or(DnsRecord::Unknown {
+                            name,
+                            qtype,
+                            ttl,
+                            rdata: rdata.to_vec(),
+                        })
                 } else {
-                    DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() }
+                    DnsRecord::Unknown {
+                        name,
+                        qtype,
+                        ttl,
+                        rdata: rdata.to_vec(),
+                    }
                 }
             }
-            DnsType::Unknown(_) => {
-                DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() }
-            }
+            DnsType::Unknown(_) => DnsRecord::Unknown {
+                name,
+                qtype,
+                ttl,
+                rdata: rdata.to_vec(),
+            },
         };
 
         self.pos = record_end;
@@ -329,22 +460,39 @@ fn parse_soa_rdata(
 ) -> DnsRecord {
     let rdata = &buf[rdata_start..rdata_start + rdlen];
     if rdata.len() < 20 {
-        return DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() };
+        return DnsRecord::Unknown {
+            name,
+            qtype,
+            ttl,
+            rdata: rdata.to_vec(),
+        };
     }
-    let mname = parse_name(buf, rdata_start).map(|(m, _)| m).unwrap_or_default();
+    let mname = parse_name(buf, rdata_start)
+        .map(|(m, _)| m)
+        .unwrap_or_default();
     let mname_end = parse_name(buf, rdata_start)
         .map(|(_, nxt)| nxt)
         .unwrap_or(rdata_start);
-    let rname = parse_name(buf, mname_end).map(|(r, _)| r).unwrap_or_default();
+    let rname = parse_name(buf, mname_end)
+        .map(|(r, _)| r)
+        .unwrap_or_default();
     let rname_end = parse_name(buf, mname_end)
         .map(|(_, nxt)| nxt)
         .unwrap_or(mname_end);
     if rname_end + 20 > rdata_start + rdlen {
-        return DnsRecord::Unknown { name, qtype, ttl, rdata: rdata.to_vec() };
+        return DnsRecord::Unknown {
+            name,
+            qtype,
+            ttl,
+            rdata: rdata.to_vec(),
+        };
     }
     let nums = &buf[rname_end..rname_end + 20];
     DnsRecord::SOA {
-        name, ttl, mname, rname,
+        name,
+        ttl,
+        mname,
+        rname,
         serial: read_u32be(&nums[..4]),
         refresh: read_u32be(&nums[4..8]),
         retry: read_u32be(&nums[8..12]),
