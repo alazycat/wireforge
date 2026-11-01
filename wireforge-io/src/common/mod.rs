@@ -6,9 +6,10 @@ use std::time::Duration;
 /// Map a receive error to [`IoError`], converting socket timeouts to
 /// [`IoError::Timeout`].
 ///
-/// `SO_RCVTIMEO` surfaces as `EAGAIN`/`EWOULDBLOCK` on Unix, not as a
-/// dedicated timeout error, so callers must translate it explicitly.
-#[cfg(target_os = "linux")]
+/// `SO_RCVTIMEO` surfaces as `EAGAIN`/`EWOULDBLOCK` on Unix and as
+/// `WSAEWOULDBLOCK`/`WSAETIMEDOUT` on Windows, not as a dedicated timeout
+/// error, so callers must translate it explicitly.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn recv_error(err: std::io::Error) -> crate::error::IoError {
     match err.kind() {
         std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => {

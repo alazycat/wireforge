@@ -1,15 +1,19 @@
 //! Platform-independent I/O traits for L2/L3 packet capture and injection.
 //!
 //! Each platform provides its own implementation of these traits:
-//! - Linux: `L2Receiver`/`L2Sender` (AF_PACKET), `L3Receiver`/`L3Sender` (raw socket)
-//! - macOS: `BpfReader`/`BpfWriter` (BPF), `BsdL3Receiver`/`BsdL3Sender` (raw socket)
-//! - Windows: `NpcapReader`/`NpcapWriter` (NPcap), `WinL3Receiver`/`WinL3Sender` (raw socket)
+//! - Linux: `L2Receiver`/`L2Sender` (AF_PACKET), `L3Receiver`/`L3Sender` (raw socket),
+//!   `L3ReceiverV6` (AF_PACKET cooked) / `L3SenderV6` (IPv6 raw socket)
+//! - macOS: `BpfReader`/`BpfWriter` (BPF), `BsdL3Receiver`/`BsdL3Sender` (raw socket),
+//!   `BsdL3ReceiverV6`/`BsdL3SenderV6` (IPv6 stubs)
+//! - Windows: `NpcapReader`/`NpcapWriter` (NPcap), `WinL3Receiver`/`WinL3Sender` (raw socket),
+//!   `WinL3ReceiverV6` (Npcap capture) / `WinL3SenderV6` (IPv6 raw socket)
 
-use std::net::SocketAddrV4;
+use std::net::{SocketAddrV4, SocketAddrV6};
 use std::time::Duration;
 
 use wireforge_core::ether::EthernetPacket;
 use wireforge_core::ipv4::Ipv4Packet;
+use wireforge_core::ipv6::Ipv6Packet;
 
 use crate::error::IoError;
 
@@ -50,4 +54,24 @@ pub trait L3Reader {
 pub trait L3Writer {
     /// Send an IPv4 packet to the given destination.
     fn send_to(&self, packet: &[u8], dst: SocketAddrV4) -> Result<usize, IoError>;
+}
+
+/// Receiver for raw L3 IPv6 packets.
+pub trait L3ReaderV6 {
+    /// Receive a single IPv6 packet and parse it.
+    fn recv(&mut self) -> Result<Ipv6Packet<'_>, IoError>;
+
+    /// Set the receive timeout. `None` means blocking (no timeout).
+    fn set_timeout(&mut self, dur: Option<Duration>) -> Result<(), IoError>;
+
+    /// Configure IPV6_HDRINCL where the backend supports it.
+    ///
+    /// Receive-only backends may treat this as a no-op.
+    fn set_header_included(&mut self, on: bool) -> Result<(), IoError>;
+}
+
+/// Sender for raw L3 IPv6 packets.
+pub trait L3WriterV6 {
+    /// Send an IPv6 packet to the given destination.
+    fn send_to(&self, packet: &[u8], dst: SocketAddrV6) -> Result<usize, IoError>;
 }
