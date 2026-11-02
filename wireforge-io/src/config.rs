@@ -8,8 +8,10 @@
 //! - **Windows**: [`Config::read_timeout`] and [`Config::promiscuous`]; buffer,
 //!   write-timeout, fanout and socket-fd options are ignored by the Npcap
 //!   backend.
-//! - **macOS**: the BPF backend is currently a stub, so all options are
-//!   ignored until #3/#4 land.
+//! - **macOS**: the BPF backend honors `read_buffer_size` (`BIOCSBLEN`),
+//!   `read_timeout` (`poll(2)` before read), `promiscuous`
+//!   (`BIOCPROMISC`/`SIOCSIFFLAGS`) and `bpf_fd_attempts`; write-timeout and
+//!   fanout options are ignored.
 
 use std::time::Duration;
 
@@ -84,7 +86,7 @@ pub struct Config {
     pub socket_fd: Option<i32>,
 
     /// Number of `/dev/bpfN` devices to try before failing (macOS only).
-    /// Defaults to 1000. Ignored until the BPF backend is implemented.
+    /// Defaults to 1000.
     pub bpf_fd_attempts: usize,
 
     /// Packet fanout settings for the reader (Linux only).

@@ -11,10 +11,11 @@ pub use l3::{BsdL3Receiver, BsdL3ReceiverV6, BsdL3Sender, BsdL3SenderV6};
 
 /// Open a configured BPF reader/writer pair.
 ///
-/// Returns [`IoError::UnsupportedPlatform`] until the BPF backend is
-/// implemented (#3/#4).
-pub fn channel(ifname: &str, _config: Config) -> Result<(BpfReader, BpfWriter), IoError> {
-    let reader = BpfReader::new(ifname)?;
+/// Both endpoints get their own `/dev/bpf` file descriptor bound to
+/// `ifname`. Requires root; each open attempt honors
+/// [`Config::bpf_fd_attempts`].
+pub fn channel(ifname: &str, config: Config) -> Result<(BpfReader, BpfWriter), IoError> {
+    let reader = BpfReader::with_config(ifname, config)?;
     let writer = BpfWriter::new(ifname)?;
     Ok((reader, writer))
 }
