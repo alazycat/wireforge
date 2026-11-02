@@ -114,9 +114,9 @@ impl<R: Read> Iterator for PcapNgReader<R> {
                     return Some(Err(invalid_data("truncated interface description block")));
                 }
                 let lt = self.byte_order.read_u16(&body) as u32;
-                self.link_type = Some(LinkType::from(lt));
+                self.link_type = Some(LinkType::from_dlt(lt as i32));
                 PcapNgBlock::InterfaceDescription {
-                    link_type: LinkType::from(lt),
+                    link_type: LinkType::from_dlt(lt as i32),
                     snap_len: self.byte_order.read_u32(&body[4..]),
                 }
             }

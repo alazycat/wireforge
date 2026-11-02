@@ -45,32 +45,13 @@ impl Endianness {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkType {
-    Ethernet,
-    Raw,
-    /// Linux cooked capture v1 — emitted by `tcpdump -i any`.
-    LinuxSll,
-    /// Linux cooked capture v2 — emitted by newer tcpdump releases.
-    LinuxSll2,
-    /// USBPcap USB traffic capture (Windows) — packets carry a USBPcap
-    /// header instead of a network link-layer header.
-    UsbPcap,
-    Unknown(u32),
-}
-
-impl From<u32> for LinkType {
-    fn from(v: u32) -> Self {
-        match v {
-            1 => LinkType::Ethernet,
-            101 => LinkType::Raw,
-            113 => LinkType::LinuxSll,
-            276 => LinkType::LinuxSll2,
-            249 => LinkType::UsbPcap,
-            _ => LinkType::Unknown(v),
-        }
-    }
-}
+/// pcap link-layer header type (the `DLT_*` value from the pcap file header).
+///
+/// Canonical definition lives in `wireforge_core::link`; re-exported here
+/// so pcap readers/writers and `wireforge-packet`'s `parse_link_layer`
+/// share one type. Note: `Unknown(v)` values from older releases are now
+/// `LinkType::Other(v as i32)`.
+pub use wireforge_core::link::LinkType;
 
 /// pcapng block types.
 #[derive(Debug, Clone)]
@@ -91,19 +72,4 @@ pub enum PcapNgBlock {
         block_type: u32,
         data: Vec<u8>,
     },
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn link_type_from_dlt_values() {
-        assert_eq!(LinkType::from(1), LinkType::Ethernet);
-        assert_eq!(LinkType::from(101), LinkType::Raw);
-        assert_eq!(LinkType::from(113), LinkType::LinuxSll);
-        assert_eq!(LinkType::from(276), LinkType::LinuxSll2);
-        assert_eq!(LinkType::from(249), LinkType::UsbPcap);
-        assert_eq!(LinkType::from(999), LinkType::Unknown(999));
-    }
 }

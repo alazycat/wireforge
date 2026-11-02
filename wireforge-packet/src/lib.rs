@@ -123,52 +123,9 @@ pub fn parse_sll2_frame(buf: &[u8]) -> Option<(Sll2Packet<'_>, Option<Packet<'_>
 
 /// pcap link-layer header type (the `DLT_*` value from the pcap file header).
 ///
-/// This maps the pcap global-header `network` field to the correct
-/// link-layer parser. Values most relevant to WireForge are named;
-/// everything else falls back to [`LinkType::Other`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum LinkType {
-    /// `DLT_EN10MB` (1) — Ethernet II frames.
-    Ethernet,
-    /// `DLT_RAW` (12; 101 on OpenBSD) — raw IP packets, version detected
-    /// from the IP header nibble.
-    Raw,
-    /// `DLT_LINUX_SLL` (113) — Linux cooked capture v1 (`tcpdump -i any`).
-    LinuxSll,
-    /// `DLT_LINUX_SLL2` (276) — Linux cooked capture v2 (newer tcpdump).
-    LinuxSll2,
-    /// `LINKTYPE_USBPCAP` (249) — USBPcap USB traffic captures (Windows).
-    UsbPcap,
-    /// Any other DLT value, held verbatim.
-    Other(i32),
-}
-
-impl LinkType {
-    /// Map a raw pcap `DLT_*` value to a [`LinkType`].
-    pub fn from_dlt(v: i32) -> Self {
-        match v {
-            1 => LinkType::Ethernet,
-            12 | 101 => LinkType::Raw,
-            113 => LinkType::LinuxSll,
-            276 => LinkType::LinuxSll2,
-            249 => LinkType::UsbPcap,
-            other => LinkType::Other(other),
-        }
-    }
-
-    /// The raw pcap `DLT_*` value for this link type.
-    pub fn dlt(self) -> i32 {
-        match self {
-            LinkType::Ethernet => 1,
-            LinkType::Raw => 12,
-            LinkType::LinuxSll => 113,
-            LinkType::LinuxSll2 => 276,
-            LinkType::UsbPcap => 249,
-            LinkType::Other(v) => v,
-        }
-    }
-}
+/// Canonical definition lives in [`wireforge_core::link`]; re-exported here
+/// so dispatch callers can use one type across parsing and pcap file I/O.
+pub use wireforge_core::link::LinkType;
 
 /// A parsed link-layer packet produced by [`parse_link_layer`].
 #[derive(Debug, Clone)]
@@ -246,7 +203,8 @@ pub fn parse_link_layer<'a>(link: LinkType, buf: &'a [u8]) -> Option<(LinkPacket
             };
             Some((LinkPacket::RawIp(buf), inner))
         }
-        LinkType::Other(_) => None,
+        // `LinkType` is `#[non_exhaustive]`; future DLT variants have no dispatch.
+        _ => None,
     }
 }
 
@@ -623,18 +581,11 @@ mod tests {
     }
 
     #[test]
-    fn link_type_dlt_mapping() {
-        assert_eq!(LinkType::from_dlt(1), LinkType::Ethernet);
+    fn link_type_is_reexported_from_core() {
+        // Full mapping tests live in wireforge-core::link; this only pins
+        // that the re-export resolves to the same canonical type.
         assert_eq!(LinkType::from_dlt(12), LinkType::Raw);
-        assert_eq!(LinkType::from_dlt(101), LinkType::Raw);
-        assert_eq!(LinkType::from_dlt(113), LinkType::LinuxSll);
-        assert_eq!(LinkType::from_dlt(276), LinkType::LinuxSll2);
-        assert_eq!(LinkType::from_dlt(249), LinkType::UsbPcap);
-        assert_eq!(LinkType::from_dlt(999), LinkType::Other(999));
-        assert_eq!(LinkType::Ethernet.dlt(), 1);
-        assert_eq!(LinkType::LinuxSll.dlt(), 113);
-        assert_eq!(LinkType::LinuxSll2.dlt(), 276);
-        assert_eq!(LinkType::UsbPcap.dlt(), 249);
+        assert_eq!(LinkType::from_dlt(12), LinkType::from_dlt(101));
     }
 
     #[test]

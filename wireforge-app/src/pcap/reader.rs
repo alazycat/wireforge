@@ -47,7 +47,7 @@ impl<R: Read> PcapReader<R> {
         &self.header
     }
     pub fn link_type(&self) -> LinkType {
-        LinkType::from(self.header.network)
+        LinkType::from_dlt(self.header.network as i32)
     }
 }
 
@@ -124,6 +124,18 @@ mod tests {
         let reader = PcapReader::from_bytes(data).unwrap();
         assert_eq!(reader.link_type(), LinkType::Ethernet);
         assert_eq!(reader.header().version_major, 2);
+    }
+
+    #[test]
+    fn read_pcap_dlt_raw_12() {
+        // Regression: DLT_RAW is 12 on most platforms; the file-level
+        // LINKTYPE is 101. Both must map to LinkType::Raw.
+        for network in [12u32, 101] {
+            let mut data = make_pcap_file(&[]);
+            data[20..24].copy_from_slice(&network.to_be_bytes());
+            let reader = PcapReader::from_bytes(data).unwrap();
+            assert_eq!(reader.link_type(), LinkType::Raw, "network={network}");
+        }
     }
 
     #[test]

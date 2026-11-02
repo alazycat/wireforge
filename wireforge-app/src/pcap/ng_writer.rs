@@ -26,7 +26,9 @@ impl<W: Write> PcapNgWriter<W> {
             LinkType::LinuxSll => 113,
             LinkType::LinuxSll2 => 276,
             LinkType::UsbPcap => 249,
-            LinkType::Unknown(v) => v as u16,
+            // `LinkType` is `#[non_exhaustive]`; fall back to the canonical
+            // DLT value (covers `Other(v)` and any future variants).
+            other => other.dlt() as u16,
         };
         let mut idb_body = Vec::with_capacity(8);
         idb_body.extend_from_slice(&lt.to_be_bytes()); // link type
