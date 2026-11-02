@@ -13,8 +13,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --workspace
       - run: cargo test --workspace
-      - run: cargo clippy --workspace -- -D warnings
-      - run: cargo doc --no-deps --workspace
+      - run: cargo test --workspace --features wireforge-app/dispatch
+      - run: cargo clippy --workspace --all-features -- -D warnings
+      - run: cargo doc --no-deps --workspace --all-features
 
   linux-privileged-io:
     runs-on: ubuntu-latest

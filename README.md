@@ -14,7 +14,7 @@ and pcap/pcapng file support.
 > for an honest, module-by-module comparison.
 
 [![CI](https://github.com/wireforge/wireforge/actions/workflows/ci.yml/badge.svg)](https://github.com/wireforge/wireforge/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.2.0-blue)
 ![MSRV](https://img.shields.io/badge/rustc-1.75+-orange)
 
 ## Architecture
@@ -27,8 +27,9 @@ wireforge-core       (Zero-copy parsers, builders, types, checksums)
 ```
 
 `wireforge-app` provides its own [`AppPacket`] enum for application-layer
-protocol dispatch. It intentionally does not depend on `wireforge-packet`,
-keeping the two dispatch layers independent.
+protocol dispatch. The two dispatch layers are independent by default;
+with the `dispatch` feature, `wireforge-app` additionally depends on
+`wireforge-packet` to offer full-stack `parse_capture` (see below).
 
 ## Quick Start
 
@@ -71,6 +72,25 @@ if let Some(pkt) = parse_udp_application(udp_payload, src_port, 5353) {
 }
 ```
 
+### Full-stack capture parsing (feature `dispatch`)
+
+With `--features dispatch`, `wireforge-app` bridges pcap records through
+`wireforge-packet`'s link-layer dispatch down to the application layer:
+
+```rust
+use wireforge_app::pcap::{parse_capture, LinkType};
+
+// `buf` is one record from PcapReader / PcapNgReader.
+let parsed = parse_capture(&buf, LinkType::Ethernet)?;
+// parsed.link      — Ethernet/SLL/SLL2/USBPcap/raw-IP view
+// parsed.network   — IPv4/IPv6, if present
+// parsed.transport — TCP/UDP/ICMP/ICMPv6, if present
+// parsed.app       — AppPacket dispatched by port (TLS, SSH, mDNS, ...)
+if let Some(app) = &parsed.app {
+    println!("{}: {:?}", app.protocol_name(), app);
+}
+```
+
 ## Protocol Coverage
 
 | Layer | Protocols | Crate |
@@ -82,6 +102,7 @@ if let Some(pkt) = parse_udp_application(udp_payload, src_port, 5353) {
 | Custom protocols | `define_protocol!` declarative macro (parser + builder + `Packet` trait) | wireforge-core |
 | App | DNS, DHCP, NTP, HTTP/1.1, TLS ClientHello, SSH, MQTT, Modbus TCP, RADIUS, mDNS, LLMNR, NetBIOS-NS, SMB2 Negotiate, RDP | wireforge-app |
 | I/O | pcap/pcapng read/write | wireforge-app |
+| Full-stack dispatch | `parse_capture`: pcap record → link → network → transport → app (feature `dispatch`) | wireforge-app |
 | Transport I/O | `pnet_transport`-style channel API (TCP/UDP/ICMP raw sockets, TTL/ECN, timeouts) | wireforge-io |
 
 ## Platform Support
@@ -106,6 +127,10 @@ if let Some(pkt) = parse_udp_application(udp_payload, src_port, 5353) {
 See the **[Migration Guide](docs/migration-from-libpnet.md)** for a
 detailed API comparison and code examples — including which parts of
 libpnet carry over as-is and which are not equivalent yet.
+
+Upgrading across WireForge 1.1 → 1.2 (the `LinkType` consolidation and
+the new `parse_capture` bridge)? See
+**[Migrating wireforge-packet](docs/migration-wireforge-packet.md)**.
 
 ## Community
 

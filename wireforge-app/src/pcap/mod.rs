@@ -6,11 +6,17 @@ mod reader;
 mod types;
 mod writer;
 
+#[cfg(feature = "dispatch")]
+pub mod dispatch;
+
 pub use ng_reader::PcapNgReader;
 pub use ng_writer::PcapNgWriter;
 pub use reader::PcapReader;
 pub use types::{Endianness, LinkType, PcapHeader, PcapNgBlock, PcapRecordHeader};
 pub use writer::PcapWriter;
+
+#[cfg(feature = "dispatch")]
+pub use dispatch::{parse_capture, ParsedCapture};
 
 /// Common interface for reading packet captures (pcap or pcapng).
 ///

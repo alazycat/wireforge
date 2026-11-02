@@ -1,4 +1,4 @@
 /target
 Cargo.lock
 .loop-state.json
-.loop-state.json
+.idea/
