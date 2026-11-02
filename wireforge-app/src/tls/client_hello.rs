@@ -48,17 +48,21 @@ impl<'a> TlsClientHello<'a> {
         &b[35..end]
     }
 
-    pub fn cipher_suites(&self) -> &[u16] {
+    pub fn cipher_suites(&self) -> Vec<u16> {
         let b = self.body();
         let pos = 35 + b[34] as usize; // skip session_id
         if pos + 2 > b.len() {
-            return &[];
+            return Vec::new();
         }
         let len = u16::from_be_bytes([b[pos], b[pos + 1]]) as usize;
         let data = &b[pos + 2..];
         let count = (len / 2).min(data.len() / 2);
-        // SAFETY: transmuting &[u8] to &[u16] — data is aligned for u16 reads
-        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u16, count) }
+        // `as_chunks` (suggested by clippy) requires Rust 1.88; MSRV is 1.75.
+        #[allow(clippy::chunks_exact_to_as_chunks)]
+        data[..count * 2]
+            .chunks_exact(2)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .collect()
     }
 
     pub fn compression_methods(&self) -> &[u8] {
