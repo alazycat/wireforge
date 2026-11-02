@@ -395,14 +395,31 @@ mod tests {
         tx.send_to(&request, IpAddr::V4(Ipv4Addr::LOCALHOST))
             .expect("send echo request");
 
-        let reply = rx
-            .next_with_timeout(Duration::from_secs(2))
-            .expect("receive")
-            .expect("got a reply within 2s");
-        assert_eq!(reply.source(), IpAddr::V4(Ipv4Addr::LOCALHOST));
-        let icmp = reply.icmp().expect("ICMP message");
-        assert_eq!(icmp.type_(), 0, "echo reply");
-        assert_eq!(icmp.payload(), b"wireforge");
+        // A raw ICMP socket receives *every* ICMP datagram addressed to the
+        // host, not just our echo reply; runner images carry ambient ICMP
+        // traffic, so loop until a packet with our payload shows up.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if std::time::Instant::now() >= deadline {
+                panic!("no matching ICMP echo reply within 5s");
+            }
+            let Some(packet) = rx
+                .next_with_timeout(Duration::from_millis(500))
+                .expect("receive")
+            else {
+                continue;
+            };
+            let Some(icmp) = packet.icmp() else {
+                continue;
+            };
+            if icmp.type_() != 0 || icmp.payload() != b"wireforge" {
+                continue;
+            }
+            assert_eq!(packet.source(), IpAddr::V4(Ipv4Addr::LOCALHOST));
+            assert_eq!(icmp.type_(), 0, "echo reply");
+            assert_eq!(icmp.payload(), b"wireforge");
+            return;
+        }
     }
 
     #[test]
