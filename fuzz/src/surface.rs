@@ -49,10 +49,10 @@ pub fn run_all(data: &[u8]) -> u64 {
     icmp_igmp(data, &mut sink);
     dns(data, &mut sink);
     app(data, &mut sink);
-    sink
+    std::hint::black_box(sink)
 }
 
-fn ipv4(data: &[u8], s: &mut u64) {
+pub fn ipv4(data: &[u8], s: &mut u64) {
     let Some(pkt) = Ipv4Packet::new(data) else {
         return;
     };
@@ -82,7 +82,7 @@ fn ipv4(data: &[u8], s: &mut u64) {
     black_box(pkt.as_bytes());
 }
 
-fn ipv6(data: &[u8], s: &mut u64) {
+pub fn ipv6(data: &[u8], s: &mut u64) {
     let Some(pkt) = Ipv6Packet::new(data) else {
         return;
     };
@@ -104,7 +104,7 @@ fn ipv6(data: &[u8], s: &mut u64) {
     black_box(pkt.as_bytes());
 }
 
-fn tcp(data: &[u8], s: &mut u64) {
+pub fn tcp(data: &[u8], s: &mut u64) {
     let Some(pkt) = TcpPacket::new(data) else {
         return;
     };
@@ -123,7 +123,7 @@ fn tcp(data: &[u8], s: &mut u64) {
     black_box(pkt.as_bytes());
 }
 
-fn udp(data: &[u8], s: &mut u64) {
+pub fn udp(data: &[u8], s: &mut u64) {
     let Some(pkt) = UdpPacket::new(data) else {
         return;
     };
@@ -139,7 +139,7 @@ fn udp(data: &[u8], s: &mut u64) {
     black_box(pkt.as_bytes());
 }
 
-fn l2(data: &[u8], s: &mut u64) {
+pub fn l2(data: &[u8], s: &mut u64) {
     if let Some(eth) = EthernetPacket::new(data) {
         mix(s, &(eth.dst_mac(), eth.src_mac(), eth.raw_ethertype()));
         mix(s, &eth.payload().len());
@@ -179,7 +179,7 @@ fn l2(data: &[u8], s: &mut u64) {
     }
 }
 
-fn tunnels(data: &[u8], s: &mut u64) {
+pub fn tunnels(data: &[u8], s: &mut u64) {
     if let Some(gre) = GrePacket::new(data) {
         mix(s, &(
             gre.flags(),
@@ -214,7 +214,7 @@ fn tunnels(data: &[u8], s: &mut u64) {
     }
 }
 
-fn icmp_igmp(data: &[u8], s: &mut u64) {
+pub fn icmp_igmp(data: &[u8], s: &mut u64) {
     if let Some(icmp) = IcmpPacket::new(data) {
         mix(s, &icmp.verify_checksum());
         mix(s, &icmp.message());
@@ -239,7 +239,7 @@ fn icmp_igmp(data: &[u8], s: &mut u64) {
     }
 }
 
-fn dns(data: &[u8], s: &mut u64) {
+pub fn dns(data: &[u8], s: &mut u64) {
     let Some(pkt) = DnsPacket::new(data) else {
         return;
     };
@@ -272,7 +272,7 @@ fn dns(data: &[u8], s: &mut u64) {
     }
 }
 
-fn app(data: &[u8], s: &mut u64) {
+pub fn app(data: &[u8], s: &mut u64) {
     if data.len() < 4 {
         return;
     }

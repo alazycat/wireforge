@@ -1,28 +1,118 @@
 # WireForge fuzzing harness
 #
-# Self-contained mutation fuzzer for the wireforge-core / wireforge-app
-# parsers. Runs on any platform with the stable toolchain (no nightly,
-# no sanitizer runtime required) — designed to also run in CI with a
-# fixed iteration budget:
+# Two fuzzing backends share the same parse surfaces ([`surface`]):
 #
-#     cargo run --release --manifest-path fuzz/Cargo.toml -- --iters 1000000 --seed 1234
+# 1. Self-contained mutation fuzzer (default, stable toolchain, any
+#    platform, no sanitizer runtime required):
 #
-# On Linux/macOS CI, coverage-guided fuzzing via `cargo-fuzz` can be
-# added later; the parse surfaces exercised here are identical.
+#       cargo run --release -- --iters 1000000 --seed 1234
+#
+# 2. Coverage-guided libFuzzer targets via `cargo-fuzz` (nightly, needs
+#    a platform with sanitizer runtimes: Linux/macOS). The targets are
+#    feature-gated so the default build on platforms without a working
+#    ASan link (e.g. MSVC) is unaffected:
+#
+#       cargo fuzz run dns --features libfuzzer -- -max_total_time=60
 
 [package]
 name = "wireforge-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
+default-run = "wireforge-fuzz"
+
+[package.metadata]
+cargo-fuzz = true
+
+[features]
+# Gates the libFuzzer targets; required because MSVC lacks the ASan/sancov
+# runtime needed to link them.
+libfuzzer = ["dep:libfuzzer-sys"]
 
 [dependencies]
 wireforge-core = { path = "../wireforge-core" }
 wireforge-app = { path = "../wireforge-app" }
+libfuzzer-sys = { version = "0.4", optional = true }
+
+[lib]
+name = "wireforge_fuzz"
+path = "src/lib.rs"
 
 [[bin]]
 name = "wireforge-fuzz"
 path = "src/main.rs"
+
+[[bin]]
+name = "ipv4"
+path = "fuzz_targets/ipv4.rs"
+required-features = ["libfuzzer"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ipv6"
+path = "fuzz_targets/ipv6.rs"
+required-features = ["libfuzzer"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tcp"
+path = "fuzz_targets/tcp.rs"
+required-features = ["libfuzzer"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "udp"
+path = "fuzz_targets/udp.rs"
+required-features = ["libfuzzer"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "l2"
+path = "fuzz_targets/l2.rs"
+required-features = ["libfuzzer"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tunnels"
+path = "fuzz_targets/tunnels.rs"
+required-features = ["libfuzzer"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "icmp_igmp"
+path = "fuzz_targets/icmp_igmp.rs"
+required-features = ["libfuzzer"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dns"
+path = "fuzz_targets/dns.rs"
+required-features = ["libfuzzer"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "app_dispatch"
+path = "fuzz_targets/app_dispatch.rs"
+required-features = ["libfuzzer"]
+test = false
+doc = false
+bench = false
 
 # Keep fuzz out of the parent workspace: it needs its own profile
 # settings (overflow checks in release).

@@ -22,8 +22,7 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-mod seeds;
-mod surface;
+use wireforge_fuzz::{seeds, surface};
 
 const MAX_INPUT: usize = 4096;
 const MAX_CORPUS: usize = 4096;
