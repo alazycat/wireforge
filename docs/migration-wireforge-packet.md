@@ -29,7 +29,7 @@ misclassified as `Unknown(12)`. The definition now lives once, in
 | `wireforge_app::pcap::LinkType` (own enum) | re-export of the same core type | Path unchanged; type unified |
 | `LinkType::Unknown(u32)` (app) | `LinkType::Other(i32)` | **Breaking**: rename + payload type |
 | `LinkType::from(u32)` (app) | `LinkType::from_dlt(i32)` | **Breaking**: inherent method |
-| `wireforge_app` = plain dep on `wireforge-packet` | optional, behind `dispatch` feature | Opt-in bridge |
+| `wireforge_app` has no dependency on `wireforge-packet` (the orphan-crate problem) | optional dep behind the `dispatch` feature | Opt-in bridge |
 
 ---
 
@@ -148,16 +148,22 @@ for rec in reader {
 use wireforge_app::pcap::{parse_capture, PcapReader};
 
 let reader = PcapReader::from_bytes(data)?;
-let link = reader.link_type().unwrap(); // None only for header-less formats
+let link = reader.link_type(); // pcap files: a plain LinkType, not an Option
 for rec in reader {
     let (_, buf) = rec?;
-    let parsed = parse_capture(&buf, link)?;
+    // A hopeless frame (shorter than its link header) yields None —
+    // skip it rather than aborting the whole pass.
+    let Some(parsed) = parse_capture(&buf, link) else { continue };
     // parsed.link / parsed.network / parsed.transport / parsed.app
     if let Some(app) = &parsed.app {
         println!("{}", app.protocol_name()); // e.g. "mDNS"
     }
 }
 ```
+
+> `PcapNgReader::link_type()` returns `Option<LinkType>` instead — it is
+> `None` until the first Interface Description Block is seen — so unwrap
+> (or default) once before the record loop, exactly as shown here.
 
 `parse_capture` never allocates and never takes ownership of the buffer:
 `ParsedCapture<'a>` borrows the record bytes, so the borrow ends with the
@@ -221,7 +227,8 @@ layering:
 
 1. **Link**: `wireforge_packet::parse_link_layer(link, buf)` — one call
    handles all five supported link types (`Ethernet`, `Raw`,
-   `LinuxSll`, `LinuxSll2`, `UsbPcap`) plus raw-IP records. This is the
+   `LinuxSll`, `LinuxSll2`, `UsbPcap`); `Raw` records are raw IP with
+   the version detected from the header nibble. This is the
    only step that can fail the whole call.
 2. **Network/transport**: repeatedly calls `Packet::inner()` while the
    current packet is `Ipv4`/`Ipv6` (the only recursing variants). Each
@@ -314,18 +321,18 @@ new protocol added there flows into the bridge with **no changes to
    do). `new` must validate lengths up front and never panic on
    truncated input; all accessors return borrowed slices of `buf`.
 2. **Variant** — add `Foo(FooPacket<'a>)` to `AppPacket<'a>`
-   ([app_packet.rs L37-48](../wireforge-app/src/app_packet.rs)). The
+   ([app_packet.rs L37-48](../wireforge-app/src/app_packet.rs#L37-L48)). The
    enum is `#[non_exhaustive]`, so this is a minor-version change for
    downstream matchers.
 3. **`protocol_name()` arm** — one line in the match at
-   [app_packet.rs L52-65](../wireforge-app/src/app_packet.rs).
+   [app_packet.rs L52-65](../wireforge-app/src/app_packet.rs#L52-L65).
 4. **`From` impl** — one line via the `from_impl!` macro
-   ([app_packet.rs L68-87](../wireforge-app/src/app_packet.rs)):
+   ([app_packet.rs L68-87](../wireforge-app/src/app_packet.rs#L68-L87)):
    `from_impl!(Foo, FooPacket<'a>);`
 5. **Port + dispatch arm** — add the IANA port to `mod ports`
-   ([app_packet.rs L19-32](../wireforge-app/src/app_packet.rs)), then a
+   ([app_packet.rs L19-32](../wireforge-app/src/app_packet.rs#L19-L32)), then a
    `port_matches` block in `parse_tcp_application` or
-   `parse_udp_application` ([app_packet.rs L109-150](../wireforge-app/src/app_packet.rs)).
+   `parse_udp_application` ([app_packet.rs L109-150](../wireforge-app/src/app_packet.rs#L109-L150)).
    Dispatch is direction-agnostic (`src == port || dst == port`), so
    both request and response records are recognized.
 6. **Tests** — add a dispatch test in `app_packet.rs` (byte-level
@@ -356,7 +363,7 @@ declined.
 
 ```rust
 use wireforge_app::app_packet::AppPacket;
-use wireforge_app::pcap::{parse_capture, PcapReader, LinkType};
+use wireforge_app::pcap::{parse_capture, LinkType};
 use wireforge_packet::Packet;
 
 // Your own zero-copy app-layer parser.
