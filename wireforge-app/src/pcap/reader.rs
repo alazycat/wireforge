@@ -65,9 +65,27 @@ impl<R: Read> Iterator for PcapReader<R> {
         let ts_usec = self.endian.read_u32(&rec_hdr[4..]);
         let incl_len = self.endian.read_u32(&rec_hdr[8..]) as usize;
 
-        let mut data = vec![0u8; incl_len];
-        if let Err(e) = self.reader.read_exact(&mut data) {
+        // Defense against corrupted or crafted headers: never pre-allocate
+        // based on the untrusted `incl_len` (a bogus 0xFFFFFFFF would attempt
+        // a ~4 GB zeroed allocation before the first read fails). Read
+        // incrementally instead so memory grows only as bytes actually
+        // arrive, then require the full record to be present.
+        let mut data = Vec::new();
+        let read_result = {
+            let mut limited = (&mut self.reader).take(incl_len as u64);
+            limited.read_to_end(&mut data)
+        };
+        if let Err(e) = read_result {
             return Some(Err(e));
+        }
+        if data.len() != incl_len {
+            return Some(Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!(
+                    "truncated pcap record: expected {incl_len} bytes, got {}",
+                    data.len()
+                ),
+            )));
         }
         Some(Ok((
             Duration::new(ts_sec as u64, 0) + Duration::from_micros(ts_usec as u64),
@@ -197,5 +215,20 @@ mod tests {
         let mut data = vec![0u8; 24];
         data[0..4].copy_from_slice(&0xDEADBEEFu32.to_be_bytes());
         assert!(PcapReader::from_bytes(data).is_err());
+    }
+
+    #[test]
+    fn read_pcap_huge_incl_len_returns_error_not_oom() {
+        // Regression: a crafted incl_len used to trigger a ~4 GB pre-allocation
+        // before the read failed. It must surface as a plain I/O error instead.
+        let mut data = make_pcap_file(&[]);
+        data.extend_from_slice(&0u32.to_be_bytes()); // ts_sec
+        data.extend_from_slice(&0u32.to_be_bytes()); // ts_usec
+        data.extend_from_slice(&0xFFFFFFFFu32.to_be_bytes()); // incl_len
+        data.extend_from_slice(&0xFFFFFFFFu32.to_be_bytes()); // orig_len
+        let reader = PcapReader::from_bytes(data).unwrap();
+        let results: Vec<_> = reader.collect();
+        assert_eq!(results.len(), 1);
+        assert!(matches!(results[0], Err(_)));
     }
 }

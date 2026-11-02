@@ -31,9 +31,18 @@ impl<R: Read> PcapNgReader<R> {
         if block_len < 28 {
             return Err(invalid_data("pcapng section header block too short"));
         }
-        // Consume the rest of the section header, including the trailing length.
-        let mut rest = vec![0u8; block_len - 12];
-        reader.read_exact(&mut rest)?;
+        // Consume the rest of the section header, including the trailing
+        // length. Read incrementally: never pre-allocate based on the
+        // untrusted `block_len` (a crafted ~4 GB claim would attempt a
+        // huge zeroed allocation before the first read fails).
+        let mut rest = Vec::new();
+        {
+            let mut limited = (&mut reader).take((block_len - 12) as u64);
+            limited.read_to_end(&mut rest)?;
+        }
+        if rest.len() != block_len - 12 {
+            return Err(invalid_data("truncated pcapng section header block"));
+        }
         let trailing = byte_order.read_u32(&rest[rest.len() - 4..]) as usize;
         if trailing != block_len {
             return Err(invalid_data("pcapng section header length mismatch"));
@@ -89,9 +98,20 @@ impl<R: Read> Iterator for PcapNgReader<R> {
             )));
         }
         let body_len = block_len - 12;
-        let mut body = vec![0u8; body_len];
-        if let Err(e) = self.reader.read_exact(&mut body) {
+        // Same defense as the section header: stream the body instead of
+        // pre-allocating from the untrusted `block_len`.
+        let mut body = Vec::new();
+        let read_result = {
+            let mut limited = (&mut self.reader).take(body_len as u64);
+            limited.read_to_end(&mut body)
+        };
+        if let Err(e) = read_result {
             return Some(Err(e));
+        }
+        if body.len() != body_len {
+            return Some(Err(invalid_data(
+                "truncated pcapng block: body shorter than declared length",
+            )));
         }
         // Read trailing block length
         let mut tail = [0u8; 4];
@@ -269,5 +289,31 @@ mod tests {
         data.extend_from_slice(&wrap_block(6, &body));
         let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
         assert!(matches!(reader.next(), Some(Err(_))));
+    }
+
+    #[test]
+    fn huge_block_len_returns_error_not_oom() {
+        // Regression: a crafted block length used to trigger a ~4 GB
+        // pre-allocation before the read failed. It must surface as a
+        // plain I/O error instead.
+        let mut data = section_header();
+        data.extend_from_slice(&0x00000001u32.to_be_bytes());
+        data.extend_from_slice(&0xFFFFFFFFu32.to_be_bytes()); // block_len
+        let mut reader = PcapNgReader::new(Cursor::new(data)).unwrap();
+        assert!(matches!(reader.next(), Some(Err(_))));
+    }
+
+    #[test]
+    fn huge_section_header_len_returns_error_not_oom() {
+        let mut shb = Vec::new();
+        shb.extend_from_slice(&0x1A2B3C4Du32.to_be_bytes());
+        shb.extend_from_slice(&1u16.to_be_bytes());
+        shb.extend_from_slice(&0u16.to_be_bytes());
+        shb.extend_from_slice(&u64::MAX.to_be_bytes());
+        let mut data = Vec::new();
+        data.extend_from_slice(&0x0A0D0D0Au32.to_be_bytes());
+        data.extend_from_slice(&0xFFFFFFFFu32.to_be_bytes()); // block_len
+        data.extend_from_slice(&shb);
+        assert!(PcapNgReader::new(Cursor::new(data)).is_err());
     }
 }
